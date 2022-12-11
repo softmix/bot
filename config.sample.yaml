@@ -1,0 +1,8 @@
+sd_api_url: "http://example.com/sdapi/v1/txt2img"
+matrix:
+  access_token: TOKEN
+  password: "passw0rd"
+  user_id: "@some_user:matrix.org"
+  hs_url: "https://matrix.org"
+  display_name: "imagegen bot"
+  debug_room: "!SoMeRoOm:example.com"
