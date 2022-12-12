@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+
+env:
+  GO_VERSION: 1.19.3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: sudo apt-get install libolm-dev libolm3
+
+      - name: Build
+        env:
+          GO_LDFLAGS: "-s -w -linkmode external -extldflags -static -X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
+        run: go build -v
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bot
+          path: bot
+          if-no-files-found: error
