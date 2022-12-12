@@ -161,6 +161,32 @@ func getUserIDs(cli *mautrix.Client, roomID id.RoomID) []id.UserID {
 	return userIDs
 }
 
+func sendImage(mach *crypto.OlmMachine, cli *mautrix.Client, roomID id.RoomID, body string, url id.ContentURI) {
+	content := event.MessageEventContent{
+		MsgType: event.MsgImage,
+		Body:    body,
+		URL:     url.CUString(),
+	}
+	encrypted, err := mach.EncryptMegolmEvent(roomID, event.EventMessage, content)
+	// These three errors mean we have to make a new Megolm session
+	if err == crypto.SessionExpired || err == crypto.SessionNotShared || err == crypto.NoGroupSession {
+		err = mach.ShareGroupSession(roomID, getUserIDs(cli, roomID))
+		if err != nil {
+			panic(err)
+		}
+		encrypted, err = mach.EncryptMegolmEvent(roomID, event.EventMessage, content)
+	}
+	if err != nil {
+		panic(err)
+	}
+
+	resp, err := cli.SendMessageEvent(roomID, event.EventEncrypted, encrypted)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Send image response:", resp)
+}
+
 func sendMessage(mach *crypto.OlmMachine, cli *mautrix.Client, roomID id.RoomID, text string) {
 	content := event.MessageEventContent{
 		MsgType: "m.text",
@@ -303,13 +329,23 @@ func main() {
 				json.NewDecoder(resp.Body).Decode(&res)
 				for _, encoded_image := range res.Images {
 					image, _ := base64.StdEncoding.DecodeString(encoded_image)
-					fmt.Println(len(string(image)))
+					upload, err := cli.UploadMedia(mautrix.ReqUploadMedia{
+						Content:       bytes.NewReader(image),
+						ContentLength: int64(len(image)),
+						ContentType:   "image/png",
+					})
+					if err != nil {
+						panic(err)
+					}
+
+					sendImage(mach, cli, decrypted.RoomID, "image.png", upload.ContentURI)
 				}
 
 				cli.SendReaction(decrypted.RoomID, decrypted.ID, "✔️")
 			}
 		}
 	})
+
 	// Start long polling in the background
 	go func() {
 		err = cli.Sync()
@@ -317,8 +353,7 @@ func main() {
 			panic(err)
 		}
 	}()
-	// Put an internal room ID here, then type text into the program's input to send encrypted messages.
-	// To stop the program, press enter without typing anything
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		line, _ := reader.ReadString('\n')
