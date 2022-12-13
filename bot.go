@@ -1,24 +1,18 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/base64"
-	"encoding/json"
+	"bot/store"
+	"database/sql"
 	"flag"
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
-	"strings"
-	"time"
+	"os/signal"
+	"syscall"
 
-	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
+	log "github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/crypto"
-	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
+	mcrypto "maunium.net/go/mautrix/crypto"
+	mevent "maunium.net/go/mautrix/event"
+	mid "maunium.net/go/mautrix/id"
 )
 
 type txt2img_request struct {
@@ -88,71 +82,23 @@ type txt2img_response struct {
 	Info string `json:"info"`
 }
 
-type config struct {
-	SDAPIURL string `yaml:"sd_api_url"`
-	Matrix   struct {
-		AccessToken string `yaml:"access_token"`
-		Password    string `yaml:"password"`
-		UserID      string `yaml:"user_id"`
-		HSURL       string `yaml:"hs_url"`
-		DisplayName string `yaml:"display_name"`
-		DebugRoom   string `yaml:"debug_room"`
-	}
+type BotType struct {
+	client        *mautrix.Client
+	configuration Configuration
+	olmMachine    *mcrypto.OlmMachine
+	stateStore    *store.StateStore
 }
 
-// Simple crypto.StateStore implementation that says all rooms are encrypted.
-type fakeStateStore struct{}
-
-var _ crypto.StateStore = &fakeStateStore{}
-
-func (fss *fakeStateStore) IsEncrypted(roomID id.RoomID) bool {
-	return true
-}
-
-func (fss *fakeStateStore) GetEncryptionEvent(roomID id.RoomID) *event.EncryptionEventContent {
-	return &event.EncryptionEventContent{
-		Algorithm:              id.AlgorithmMegolmV1,
-		RotationPeriodMillis:   7 * 24 * 60 * 60 * 1000,
-		RotationPeriodMessages: 100,
-	}
-}
-
-func (fss *fakeStateStore) FindSharedRooms(userID id.UserID) []id.RoomID {
-	return []id.RoomID{}
-}
-
-// Simple crypto.Logger implementation that just prints to stdout.
-type fakeLogger struct{}
-
-var _ crypto.Logger = &fakeLogger{}
-
-func (f fakeLogger) Error(message string, args ...interface{}) {
-	fmt.Printf("[ERROR] "+message+"\n", args...)
-}
-
-func (f fakeLogger) Warn(message string, args ...interface{}) {
-	fmt.Printf("[WARN] "+message+"\n", args...)
-}
-
-func (f fakeLogger) Debug(message string, args ...interface{}) {
-	fmt.Printf("[DEBUG] "+message+"\n", args...)
-}
-
-func (f fakeLogger) Trace(message string, args ...interface{}) {
-	if strings.HasPrefix(message, "Got membership state event") {
-		return
-	}
-	fmt.Printf("[TRACE] "+message+"\n", args...)
-}
+var Bot BotType
 
 // Easy way to get room members (to find out who to share keys to).
 // In real apps, you should cache the member list somewhere and update it based on m.room.member events.
-func getUserIDs(cli *mautrix.Client, roomID id.RoomID) []id.UserID {
+func getUserIDs(cli *mautrix.Client, roomID mid.RoomID) []mid.UserID {
 	members, err := cli.JoinedMembers(roomID)
 	if err != nil {
 		panic(err)
 	}
-	userIDs := make([]id.UserID, len(members.Joined))
+	userIDs := make([]mid.UserID, len(members.Joined))
 	i := 0
 	for userID := range members.Joined {
 		userIDs[i] = userID
@@ -161,206 +107,221 @@ func getUserIDs(cli *mautrix.Client, roomID id.RoomID) []id.UserID {
 	return userIDs
 }
 
-func sendImage(mach *crypto.OlmMachine, cli *mautrix.Client, roomID id.RoomID, body string, url id.ContentURI) {
-	content := event.MessageEventContent{
-		MsgType: event.MsgImage,
+func sendImage(mach *mcrypto.OlmMachine, cli *mautrix.Client, roomID mid.RoomID, body string, url mid.ContentURI) {
+	content := mevent.MessageEventContent{
+		MsgType: mevent.MsgImage,
 		Body:    body,
 		URL:     url.CUString(),
 	}
-	encrypted, err := mach.EncryptMegolmEvent(roomID, event.EventMessage, content)
+	encrypted, err := mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
 	// These three errors mean we have to make a new Megolm session
-	if err == crypto.SessionExpired || err == crypto.SessionNotShared || err == crypto.NoGroupSession {
+	if err == mcrypto.SessionExpired || err == mcrypto.SessionNotShared || err == mcrypto.NoGroupSession {
 		err = mach.ShareGroupSession(roomID, getUserIDs(cli, roomID))
 		if err != nil {
 			panic(err)
 		}
-		encrypted, err = mach.EncryptMegolmEvent(roomID, event.EventMessage, content)
+		encrypted, err = mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
 	}
 	if err != nil {
 		panic(err)
 	}
 
-	resp, err := cli.SendMessageEvent(roomID, event.EventEncrypted, encrypted)
+	resp, err := cli.SendMessageEvent(roomID, mevent.EventEncrypted, encrypted)
 	if err != nil {
-		panic(err)
+		log.Errorf("Failed to send image, %w", err)
 	}
-	fmt.Println("Send image response:", resp)
+	log.Infof("Send image response: %w", resp)
 }
 
-func sendMessage(mach *crypto.OlmMachine, cli *mautrix.Client, roomID id.RoomID, text string) {
-	content := event.MessageEventContent{
+func sendMessage(mach *mcrypto.OlmMachine, cli *mautrix.Client, roomID mid.RoomID, text string) {
+	content := mevent.MessageEventContent{
 		MsgType: "m.text",
 		Body:    text,
 	}
-	encrypted, err := mach.EncryptMegolmEvent(roomID, event.EventMessage, content)
+	encrypted, err := mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
 	// These three errors mean we have to make a new Megolm session
-	if err == crypto.SessionExpired || err == crypto.SessionNotShared || err == crypto.NoGroupSession {
+	if err == mcrypto.SessionExpired || err == mcrypto.SessionNotShared || err == mcrypto.NoGroupSession {
 		err = mach.ShareGroupSession(roomID, getUserIDs(cli, roomID))
 		if err != nil {
 			panic(err)
 		}
-		encrypted, err = mach.EncryptMegolmEvent(roomID, event.EventMessage, content)
+		encrypted, err = mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
 	}
 	if err != nil {
 		panic(err)
 	}
-	resp, err := cli.SendMessageEvent(roomID, event.EventEncrypted, encrypted)
+	resp, err := cli.SendMessageEvent(roomID, mevent.EventEncrypted, encrypted)
 	if err != nil {
-		panic(err)
+		log.Errorf("Failed to send message, %w", err)
 	}
-	fmt.Println("Send response:", resp)
+	log.Infof("Send response: %w", resp)
 }
 
 func main() {
-	start := time.Now().UnixNano() / 1_000_000
-	var cfg config
-
-	configFile := flag.String("config", "config.yaml", "Path to the configuration file")
-
+	configPath := flag.String("config", "config.yaml", "Path to the configuration file")
+	dbFilename := flag.String("dbfile", "./state.db", "the SQLite DB file to use")
 	flag.Parse()
 
-	configBytes, err := ioutil.ReadFile(*configFile)
+	// Configure logging
+	log.SetFormatter(&log.JSONFormatter{})
+	log.SetLevel(log.DebugLevel)
+	log.Info("Starting")
+
+	// Load configuration
+	configBytes, err := os.ReadFile(*configPath)
 	if err != nil {
-		panic(errors.Wrap(err, "Couldn't open the configuration file"))
+		log.Fatalf("Couldn't open the configuration file at %s: %s", *configPath, err)
 	}
 
-	if err := yaml.Unmarshal(configBytes, &cfg); err != nil {
-		panic(errors.Wrap(err, "Couldn't read the configuration file"))
+	Bot.configuration = Configuration{}
+	if err := Bot.configuration.Parse(configBytes); err != nil {
+		log.Fatal("Failed to read config!")
 	}
-
-	cli, err := mautrix.NewClient(cfg.Matrix.HSURL, "", "")
+	log.Info(Bot.configuration)
+	username := mid.UserID(Bot.configuration.Username)
+	_, _, err = username.Parse()
 	if err != nil {
-		panic(errors.Wrap(err, "Couldn't initialize the Matrix client"))
+		log.Fatalf("Couldn't parse username: %s", username)
 	}
 
-	// Log in to get access token and device ID.
-	_, err = cli.Login(&mautrix.ReqLogin{
-		Type: mautrix.AuthTypePassword,
-		Identifier: mautrix.UserIdentifier{
-			Type: mautrix.IdentifierTypeUser,
-			User: cfg.Matrix.UserID,
-		},
-		Password:                 cfg.Matrix.Password,
-		InitialDeviceDisplayName: cfg.Matrix.DisplayName,
-		StoreCredentials:         true,
-	})
+	// Open the config database
+	db, err := sql.Open("sqlite3", *dbFilename)
 	if err != nil {
-		panic(err)
+		log.Fatal("Could not open database.")
 	}
 
-	// Log out when the program ends (don't do this in real apps)
-	defer func() {
-		fmt.Println("Logging out")
-		resp, err := cli.Logout()
-		if err != nil {
-			fmt.Println("Logout error:", err)
+	// Make sure to exit cleanly
+	c := make(chan os.Signal, 1)
+	signal.Notify(c,
+		os.Interrupt,
+		os.Kill,
+		syscall.SIGABRT,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGQUIT,
+		syscall.SIGTERM,
+	)
+	go func() {
+		for range c { // when the process is killed
+			log.Info("Cleaning up")
+			db.Close()
+			os.Exit(0)
 		}
-		fmt.Println("Logout response:", resp)
 	}()
 
-	// Create a store for the e2ee keys. In real apps, use NewSQLCryptoStore instead of NewGobStore.
-	cryptoStore, err := crypto.NewGobStore("test.gob")
-	if err != nil {
-		panic(err)
+	Bot.stateStore = store.NewStateStore(db)
+	if err := Bot.stateStore.CreateTables(); err != nil {
+		log.Fatal("Failed to create tables.", err)
 	}
 
-	mach := crypto.NewOlmMachine(cli, &fakeLogger{}, cryptoStore, &fakeStateStore{})
-	// Load data from the crypto store
-	err = mach.Load()
-	if err != nil {
-		panic(err)
+	deviceID := FindDeviceID(db, username.String())
+	if len(deviceID) > 0 {
+		log.Info("Found existing device ID in database:", deviceID)
 	}
 
-	// Hook up the OlmMachine into the Matrix client so it receives e2ee keys and other such things.
-	syncer := cli.Syncer.(*mautrix.DefaultSyncer)
+	Bot.client, err = mautrix.NewClient(Bot.configuration.Homeserver, "", "")
+	if err != nil {
+		log.Fatal("Couldn't initialize the Matrix client")
+	}
+
+	_, err = DoRetry("login", func() (interface{}, error) {
+		return Bot.client.Login(&mautrix.ReqLogin{
+			Type: mautrix.AuthTypePassword,
+			Identifier: mautrix.UserIdentifier{
+				Type: mautrix.IdentifierTypeUser,
+				User: username.String(),
+			},
+			Password:                 Bot.configuration.Password,
+			InitialDeviceDisplayName: "vacation responder",
+			DeviceID:                 deviceID,
+			StoreCredentials:         true,
+		})
+	})
+	if err != nil {
+		log.Fatalf("Couldn't login to the homeserver.")
+	}
+	log.Infof("Logged in as %s/%s", Bot.client.UserID, Bot.client.DeviceID)
+
+	// set the client store on the client.
+	Bot.client.Store = Bot.stateStore
+
+	// Setup the crypto store
+	cryptoStore := mcrypto.NewSQLCryptoStore(
+		db,
+		"sqlite3",
+		username.String(),
+		Bot.client.DeviceID,
+		[]byte("standupbot_cryptostore_key"),
+		CryptoLogger{},
+	)
+	if err = cryptoStore.CreateTables(); err != nil {
+		log.Fatal("Could not upgrade tables for the SQL crypto store.")
+	}
+
+	Bot.olmMachine = mcrypto.NewOlmMachine(Bot.client, &CryptoLogger{}, cryptoStore, Bot.stateStore)
+	err = Bot.olmMachine.Load()
+	if err != nil {
+		log.Errorf("Could not initialize encryption support. Encrypted rooms will not work.")
+	}
+
+	syncer := Bot.client.Syncer.(*mautrix.DefaultSyncer)
+	// Hook up the OlmMachine into the Matrix client so it receives e2ee
+	// keys and other such things.
 	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
-		mach.ProcessSyncResponse(resp, since)
+		Bot.olmMachine.ProcessSyncResponse(resp, since)
 		return true
 	})
-	syncer.OnEventType(event.StateMember, func(source mautrix.EventSource, evt *event.Event) {
-		mach.HandleMemberEvent(evt)
-	})
-	// Listen to encrypted messages
-	syncer.OnEventType(event.EventEncrypted, func(source mautrix.EventSource, evt *event.Event) {
-		if evt.Timestamp < start {
-			// Ignore events from before the program started
-			return
+
+	syncer.OnEventType(mevent.StateMember, func(_ mautrix.EventSource, event *mevent.Event) {
+		Bot.olmMachine.HandleMemberEvent(event)
+		Bot.stateStore.SetMembership(event)
+
+		if event.GetStateKey() == username.String() && event.Content.AsMember().Membership == mevent.MembershipInvite {
+			log.Info("Joining ", event.RoomID)
+			_, err := DoRetry("join room", func() (interface{}, error) {
+				return Bot.client.JoinRoomByID(event.RoomID)
+			})
+			if err != nil {
+				log.Errorf("Could not join channel %s. Error %+v", event.RoomID.String(), err)
+			} else {
+				log.Infof("Joined %s sucessfully", event.RoomID.String())
+			}
+		} else if event.GetStateKey() == username.String() && event.Content.AsMember().Membership.IsLeaveOrBan() {
+			log.Infof("Left or banned from %s", event.RoomID)
 		}
-		decrypted, err := mach.DecryptMegolmEvent(evt)
+	})
+
+	syncer.OnEventType(mevent.StateEncryption, func(_ mautrix.EventSource, event *mevent.Event) {
+		Bot.stateStore.SetEncryptionEvent(event)
+	})
+
+	syncer.OnEventType(mevent.EventMessage, func(source mautrix.EventSource, event *mevent.Event) { go HandleMessage(source, event) })
+
+	syncer.OnEventType(mevent.EventEncrypted, func(source mautrix.EventSource, event *mevent.Event) {
+		decryptedEvent, err := Bot.olmMachine.DecryptMegolmEvent(event)
 		if err != nil {
-			fmt.Println("Failed to decrypt:", err)
+			log.Errorf("Failed to decrypt message from %s in %s: %+v", event.Sender, event.RoomID, err)
 		} else {
-			fmt.Println("Received encrypted event:", decrypted.Content.Raw)
-			message, isMessage := decrypted.Content.Parsed.(*event.MessageEventContent)
-			if isMessage && message.Body == "ping" {
-				sendMessage(mach, cli, decrypted.RoomID, "Pong!")
-			}
-
-			if isMessage && message.Body == "yay" {
-				cli.SendReaction(decrypted.RoomID, decrypted.ID, "🎉")
-			}
-
-			if isMessage && strings.HasPrefix(message.Body, "!gen ") {
-				prompt := strings.TrimPrefix(message.Body, "!gen ")
-				if len(prompt) == 0 {
-					return
-				}
-
-				var req_body txt2img_request
-				req_body.Prompt = prompt
-
-				json_body, err := json.Marshal(req_body)
-				if err != nil {
-					panic(err)
-				}
-
-				cli.SendReaction(decrypted.RoomID, decrypted.ID, "👌")
-
-				resp, err := http.Post(cfg.SDAPIURL, "application/json", bytes.NewBuffer(json_body))
-				if err != nil {
-					panic(err)
-				}
-				defer resp.Body.Close()
-
-				fmt.Println("response Status:", resp.Status)
-				fmt.Println("response Headers:", resp.Header)
-
-				var res txt2img_response
-				json.NewDecoder(resp.Body).Decode(&res)
-				for _, encoded_image := range res.Images {
-					image, _ := base64.StdEncoding.DecodeString(encoded_image)
-					upload, err := cli.UploadMedia(mautrix.ReqUploadMedia{
-						Content:       bytes.NewReader(image),
-						ContentLength: int64(len(image)),
-						ContentType:   "image/png",
-					})
-					if err != nil {
-						panic(err)
-					}
-
-					sendImage(mach, cli, decrypted.RoomID, "image.png", upload.ContentURI)
-				}
-
-				cli.SendReaction(decrypted.RoomID, decrypted.ID, "✔️")
+			log.Debugf("Received encrypted event from %s in %s", event.Sender, event.RoomID)
+			if decryptedEvent.Type == mevent.EventMessage {
+				go HandleMessage(source, decryptedEvent)
 			}
 		}
 	})
 
-	// Start long polling in the background
-	go func() {
-		err = cli.Sync()
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	reader := bufio.NewReader(os.Stdin)
 	for {
-		line, _ := reader.ReadString('\n')
-		line = strings.TrimSpace(line)
-		if line == "" {
-			break
+		log.Debugf("Running sync...")
+		err = Bot.client.Sync()
+		if err != nil {
+			log.Errorf("Sync failed. %+v", err)
 		}
-		go sendMessage(mach, cli, id.RoomID(cfg.Matrix.DebugRoom), line)
 	}
+}
+
+func FindDeviceID(db *sql.DB, accountID string) (deviceID mid.DeviceID) {
+	err := db.QueryRow("SELECT device_id FROM crypto_account WHERE account_id=$1", accountID).Scan(&deviceID)
+	if err != nil && err != sql.ErrNoRows {
+		log.Warnf("Failed to scan device ID: %v", err)
+	}
+	return
 }
