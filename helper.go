@@ -16,7 +16,7 @@ import (
 
 func DoRetry(description string, fn func() (interface{}, error)) (interface{}, error) {
 	var err error
-	b, err := retry.NewFibonacci(1 * time.Second)
+	b := retry.NewFibonacci(1 * time.Second)
 	if err != nil {
 		panic(err)
 	}
