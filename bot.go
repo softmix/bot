@@ -91,72 +91,6 @@ type BotType struct {
 
 var Bot BotType
 
-// Easy way to get room members (to find out who to share keys to).
-// In real apps, you should cache the member list somewhere and update it based on m.room.member events.
-func getUserIDs(cli *mautrix.Client, roomID mid.RoomID) []mid.UserID {
-	members, err := cli.JoinedMembers(roomID)
-	if err != nil {
-		panic(err)
-	}
-	userIDs := make([]mid.UserID, len(members.Joined))
-	i := 0
-	for userID := range members.Joined {
-		userIDs[i] = userID
-		i++
-	}
-	return userIDs
-}
-
-func sendImage(mach *mcrypto.OlmMachine, cli *mautrix.Client, roomID mid.RoomID, body string, url mid.ContentURI) {
-	content := mevent.MessageEventContent{
-		MsgType: mevent.MsgImage,
-		Body:    body,
-		URL:     url.CUString(),
-	}
-	encrypted, err := mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
-	// These three errors mean we have to make a new Megolm session
-	if err == mcrypto.SessionExpired || err == mcrypto.SessionNotShared || err == mcrypto.NoGroupSession {
-		err = mach.ShareGroupSession(roomID, getUserIDs(cli, roomID))
-		if err != nil {
-			panic(err)
-		}
-		encrypted, err = mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
-	}
-	if err != nil {
-		panic(err)
-	}
-
-	resp, err := cli.SendMessageEvent(roomID, mevent.EventEncrypted, encrypted)
-	if err != nil {
-		log.Errorf("Failed to send image, %w", err)
-	}
-	log.Infof("Send image response: %w", resp)
-}
-
-func sendMessage(mach *mcrypto.OlmMachine, cli *mautrix.Client, roomID mid.RoomID, text string) {
-	content := mevent.MessageEventContent{
-		MsgType: "m.text",
-		Body:    text,
-	}
-	encrypted, err := mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
-	// These three errors mean we have to make a new Megolm session
-	if err == mcrypto.SessionExpired || err == mcrypto.SessionNotShared || err == mcrypto.NoGroupSession {
-		err = mach.ShareGroupSession(roomID, getUserIDs(cli, roomID))
-		if err != nil {
-			panic(err)
-		}
-		encrypted, err = mach.EncryptMegolmEvent(roomID, mevent.EventMessage, content)
-	}
-	if err != nil {
-		panic(err)
-	}
-	resp, err := cli.SendMessageEvent(roomID, mevent.EventEncrypted, encrypted)
-	if err != nil {
-		log.Errorf("Failed to send message, %w", err)
-	}
-	log.Infof("Send response: %w", resp)
-}
-
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to the configuration file")
 	dbFilename := flag.String("dbfile", "./state.db", "the SQLite DB file to use")
@@ -177,7 +111,6 @@ func main() {
 	if err := Bot.configuration.Parse(configBytes); err != nil {
 		log.Fatal("Failed to read config!")
 	}
-	log.Info(Bot.configuration)
 	username := mid.UserID(Bot.configuration.Username)
 	_, _, err = username.Parse()
 	if err != nil {

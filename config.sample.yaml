@@ -1,7 +1,6 @@
 sdapi_url: "http://example.com/sdapi/v1/txt2img"
-matrix:
-  debug_room: "!SoMeRoOm:example.com"
-  display_name: "imagegen bot"
-  homeserver: "https://matrix.org"
-  password: "passw0rd"
-  username: "@some_user:matrix.org"
+password: "passw0rd"
+username: "@some_user:matrix.org"
+homeserver: "https://matrix.org"
+display_name: "imagegen bot"
+debug_room: "!SoMeRoOm:example.com"
