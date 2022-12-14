@@ -75,12 +75,15 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 			Height:   cfg.Height,
 			MimeType: http.DetectContentType(imageBytes),
 			Width:    cfg.Height,
-
-			// This gets overwritten later after the file is uploaded to the homeserver
-			Size: len(imageBytes),
+			Size:     len(imageBytes),
 		},
 
-		// RelatesTo: ,
+		RelatesTo: &mevent.RelatesTo{
+			EventID: event.ID,
+			InReplyTo: &mevent.InReplyTo{
+				EventID: event.ID,
+			},
+		},
 	}
 
 	uploadMime := content.Info.MimeType
