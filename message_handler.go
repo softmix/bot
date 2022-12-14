@@ -5,12 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"net/http"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto/attachment"
 	mevent "maunium.net/go/mautrix/event"
 )
 
@@ -62,22 +64,51 @@ func sendMessage(event *mevent.Event, text string) {
 	SendMessage(event.RoomID, &content)
 }
 
-func sendImage(event *mevent.Event, filename string, image []byte) {
-	upload, err := Bot.client.UploadMedia(mautrix.ReqUploadMedia{
-		Content:       bytes.NewReader(image),
-		ContentLength: int64(len(image)),
-		ContentType:   "image/png",
-	})
-	if err != nil {
-		log.Errorf("Got an error when uploading media.", err)
-		return
-	}
-	content := mevent.MessageEventContent{
+func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
+	var file *attachment.EncryptedFile
+	cfg, _, _ := image.DecodeConfig(bytes.NewReader(imageBytes))
+
+	content := &mevent.MessageEventContent{
 		MsgType: mevent.MsgImage,
 		Body:    filename,
-		URL:     upload.ContentURI.CUString(),
+		Info: &mevent.FileInfo{
+			Height:   cfg.Height,
+			MimeType: http.DetectContentType(imageBytes),
+			Width:    cfg.Height,
+
+			// This gets overwritten later after the file is uploaded to the homeserver
+			Size: len(imageBytes),
+		},
+
+		// RelatesTo: ,
 	}
-	SendMessage(event.RoomID, &content)
+
+	uploadMime := content.Info.MimeType
+	if Bot.stateStore.IsEncrypted(event.RoomID) {
+		file = attachment.NewEncryptedFile()
+		file.EncryptInPlace(imageBytes)
+		uploadMime = "application/octet-stream"
+	}
+
+	req := mautrix.ReqUploadMedia{
+		ContentBytes: imageBytes,
+		ContentType:  uploadMime,
+	}
+
+	upload, err := Bot.client.UploadMedia(req)
+	if err != nil {
+		log.Errorf("Failed to upload media", err)
+	}
+
+	if file != nil {
+		content.File = &mevent.EncryptedFileInfo{
+			EncryptedFile: *file,
+			URL:           upload.ContentURI.CUString(),
+		}
+	} else {
+		content.URL = upload.ContentURI.CUString()
+	}
+	SendMessage(event.RoomID, content)
 }
 
 func sendImageForPrompt(event *mevent.Event, prompt string) {
