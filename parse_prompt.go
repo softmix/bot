@@ -17,6 +17,10 @@ func ParsePrompt(prompt string) txt2img_request {
 			if v, err := strconv.ParseFloat(match[2], 32); err == nil {
 				request.CfgScale = clampf(float32(v), 1, 30)
 			}
+		case "count":
+			if v, err := strconv.ParseInt(match[2], 10, 32); err == nil {
+				request.NIter = clamp(int(v), 1, 9)
+			}
 		case "h":
 			if v, err := strconv.ParseInt(match[2], 10, 32); err == nil {
 				request.Height = clamp((int(v)+64-1)&-64, 512, 2048)

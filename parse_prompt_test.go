@@ -36,6 +36,13 @@ func TestParsePrompt(t *testing.T) {
 				EnableHR: true, // when a dimension >= 1024
 			},
 		},
+		{
+			name: "requesting multiple images",
+			args: args{"count:10"},
+			want: txt2img_request{
+				NIter: 9, //clamped
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

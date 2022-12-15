@@ -138,12 +138,14 @@ func sendImageForPrompt(event *mevent.Event, prompt string) {
 		log.Error("Couldn't decode the response", err)
 		return
 	}
-	for _, encoded_image := range res.Images {
-		image, err := base64.StdEncoding.DecodeString(encoded_image)
-		if err != nil {
-			log.Error("Failed to decode the image", err)
-			continue
-		}
-		sendImage(event, "image.png", image)
+	encoded_image := res.Images[0]
+	//for _, encoded_image := range res.Images {
+	image, err := base64.StdEncoding.DecodeString(encoded_image)
+	if err != nil {
+		log.Error("Failed to decode the image", err)
+		//continue
+		return
 	}
+	sendImage(event, "image.png", image)
+	//}
 }
