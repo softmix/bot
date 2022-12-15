@@ -22,7 +22,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 		return
 	}
 
-	log.Infof("Parsed content:", event.Content.Parsed)
+	log.Info("Parsed content:", event.Content.Parsed)
 	content := event.Content.AsMessage()
 	body := content.Body
 	switch content.MsgType {
@@ -100,7 +100,7 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 
 	upload, err := Bot.client.UploadMedia(req)
 	if err != nil {
-		log.Errorf("Failed to upload media", err)
+		log.Error("Failed to upload media", err)
 	}
 
 	if file != nil {
@@ -115,18 +115,17 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 }
 
 func sendImageForPrompt(event *mevent.Event, prompt string) {
-	var req_body txt2img_request
-	req_body.Prompt = prompt
+	req_body := ParsePrompt(prompt)
 
 	json_body, err := json.Marshal(req_body)
 	if err != nil {
-		log.Errorf("Failed to marshal fields to JSON, %w", err)
+		log.Error("Failed to marshal fields to JSON", err)
 		return
 	}
 
 	resp, err := http.Post(Bot.configuration.SDAPIURL, "application/json", bytes.NewBuffer(json_body))
 	if err != nil {
-		log.Errorf("Failed to POST to SD API, %w", err)
+		log.Error("Failed to POST to SD API", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -136,13 +135,13 @@ func sendImageForPrompt(event *mevent.Event, prompt string) {
 
 	var res txt2img_response
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		log.Errorf("Couldn't decode the response, %w", err)
+		log.Error("Couldn't decode the response", err)
 		return
 	}
 	for _, encoded_image := range res.Images {
 		image, err := base64.StdEncoding.DecodeString(encoded_image)
 		if err != nil {
-			log.Errorf("Failed to decode the image", err)
+			log.Error("Failed to decode the image", err)
 			continue
 		}
 		sendImage(event, "image.png", image)
