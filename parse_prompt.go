@@ -14,9 +14,8 @@ func ParsePrompt(prompt string) txt2img_request {
 	for _, match := range matches {
 		switch match[1] {
 		case "cfg":
-			v, err := strconv.ParseFloat(match[2], 32)
-			if err == nil {
-				request.CfgScale = float32(v)
+			if v, err := strconv.ParseFloat(match[2], 32); err == nil {
+				request.CfgScale = clampf(float32(v), 1, 30)
 			}
 		case "h":
 			if v, err := strconv.ParseInt(match[2], 10, 32); err == nil {
@@ -44,6 +43,17 @@ func ParsePrompt(prompt string) txt2img_request {
 }
 
 func clamp(x, min, max int) int {
+	switch {
+	case x < min:
+		return min
+	case x > max:
+		return max
+	default:
+		return x
+	}
+}
+
+func clampf(x, min, max float32) float32 {
 	switch {
 	case x < min:
 		return min

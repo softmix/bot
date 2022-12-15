@@ -30,9 +30,9 @@ func TestParsePrompt(t *testing.T) {
 		},
 		{
 			name: "a prompt with invalid values",
-			args: args{"w:g cfg:12.e h:0 w:3000"},
+			args: args{"w:g cfg:31 h:0 w:3000"},
 			want: txt2img_request{
-				Width: 2048, Height: 512, // clamped
+				CfgScale: 30, Width: 2048, Height: 512, // clamped
 				EnableHR: true, // when a dimension >= 1024
 			},
 		},
