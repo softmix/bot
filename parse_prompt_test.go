@@ -33,7 +33,7 @@ func TestParsePrompt(t *testing.T) {
 			args: args{"w:g cfg:12.e h:0 w:3000"},
 			want: txt2img_request{
 				Width: 2048, Height: 512, // clamped
-				EnableHR: true, // when a dimension is greater than 1024
+				EnableHR: true, // when a dimension >= 1024
 			},
 		},
 	}

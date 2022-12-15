@@ -30,7 +30,7 @@ func ParsePrompt(prompt string) txt2img_request {
 		prompt = strings.Replace(prompt, match[0], "", 1)
 	}
 
-	if request.Width > 1024 || request.Height > 1024 {
+	if request.Width >= 1024 || request.Height >= 1024 {
 		request.EnableHR = true
 	}
 
