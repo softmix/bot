@@ -35,6 +35,10 @@ func ParsePrompt(prompt string) txt2img_request {
 				hrForced = true
 				request.EnableHR = v
 			}
+		case "steps":
+			if v, err := strconv.ParseInt(match[2], 10, 32); err == nil {
+				request.Steps = clamp((int(v)+64-1)&-64, 1, 150)
+			}
 		}
 		prompt = strings.Replace(prompt, match[0], "", 1)
 	}
