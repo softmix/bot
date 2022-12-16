@@ -8,6 +8,7 @@ import (
 
 func ParsePrompt(prompt string) txt2img_request {
 	var request txt2img_request
+	hrForced := false
 
 	var re = regexp.MustCompile(`(\S+):(\S+)`)
 	matches := re.FindAllStringSubmatch(prompt, -1)
@@ -29,11 +30,16 @@ func ParsePrompt(prompt string) txt2img_request {
 			if v, err := strconv.ParseInt(match[2], 10, 32); err == nil {
 				request.Width = clamp((int(v)+64-1)&-64, 512, 2048)
 			}
+		case "hr":
+			if v, err := strconv.ParseBool(match[2]); err == nil {
+				hrForced = true
+				request.EnableHR = v
+			}
 		}
 		prompt = strings.Replace(prompt, match[0], "", 1)
 	}
 
-	if request.Width >= 1024 || request.Height >= 1024 {
+	if (request.Width >= 1024 || request.Height >= 1024) && !hrForced {
 		request.EnableHR = true
 	}
 
