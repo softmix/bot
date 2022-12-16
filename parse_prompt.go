@@ -43,6 +43,10 @@ func ParsePrompt(prompt string) txt2img_request {
 		request.EnableHR = true
 	}
 
+	if request.EnableHR {
+		request.DenoisingStrength = 0.7
+	}
+
 	prompts := strings.Split(prompt, "###")
 	request.Prompt = strings.TrimSpace(prompts[0])
 	if len(prompts) == 2 {

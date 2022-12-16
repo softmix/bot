@@ -42,7 +42,7 @@ type txt2img_response struct {
 	Images     []string `json:"images"`
 	Parameters struct {
 		EnableHr          bool        `json:"enable_hr"`
-		DenoisingStrength int         `json:"denoising_strength"`
+		DenoisingStrength float64     `json:"denoising_strength"`
 		FirstphaseWidth   int         `json:"firstphase_width"`
 		FirstphaseHeight  int         `json:"firstphase_height"`
 		Prompt            string      `json:"prompt"`
