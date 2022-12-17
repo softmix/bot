@@ -19,12 +19,13 @@ func TestParsePrompt(t *testing.T) {
 	}{
 		{
 			name: "a basic prompt with negatives and some configuration",
-			args: args{"some happy prompt h:512 w:600 ### not this tho cfg:12.3 ds:0.6"},
+			args: args{"some happy prompt h:512 w:600 ### not this tho cfg:12.3 ds:0.6 sampler:ddim"},
 			want: txt2img_request{
 				Prompt:            "some happy prompt",
 				NegativePrompt:    "not this tho",
 				CfgScale:          12.3,
 				DenoisingStrength: 0.6,
+				SamplerName:       "DDIM",
 				Height:            512,
 				Width:             640, // rounded to multiple of 64
 			},
@@ -39,10 +40,12 @@ func TestParsePrompt(t *testing.T) {
 			},
 		},
 		{
-			name: "setting the sampler",
-			args: args{"sampler:ddim"},
+			name: "a prompt with weights",
+			args: args{"w:704 a (high:1.4) (low:0.3) prompt h:704"},
 			want: txt2img_request{
-				SamplerName: "DDIM",
+				Prompt: "a (high:1.4) (low:0.3) prompt", //hasn't removed h: or w:
+				Width:  704,                             // hasn't tried to set it from low:
+				Height: 704,                             // hasn't tried to set it from high:
 			},
 		},
 	}
