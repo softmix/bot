@@ -41,9 +41,10 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 				break
 			}
 			sendReaction(event, "👌")
-			if err := sendImageForPrompt(event, prompt); err != nil {
+			if image, err := getImageForPrompt(event, prompt); err != nil {
 				sendReaction(event, "❌")
 			} else {
+				sendImage(event, "image.png", image)
 				sendReaction(event, "✔️")
 			}
 		}
@@ -117,19 +118,19 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 	SendMessage(event.RoomID, content)
 }
 
-func sendImageForPrompt(event *mevent.Event, prompt string) error {
+func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
 	req_body := ParsePrompt(prompt)
 
 	json_body, err := json.Marshal(req_body)
 	if err != nil {
 		log.Error("Failed to marshal fields to JSON", err)
-		return err
+		return nil, err
 	}
 
 	resp, err := http.Post(Bot.configuration.SDAPIURL, "application/json", bytes.NewBuffer(json_body))
 	if err != nil {
 		log.Error("Failed to POST to SD API", err)
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -139,7 +140,7 @@ func sendImageForPrompt(event *mevent.Event, prompt string) error {
 	var res txt2img_response
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		log.Error("Couldn't decode the response", err)
-		return err
+		return nil, err
 	}
 	encoded_image := res.Images[0]
 	//for _, encoded_image := range res.Images {
@@ -147,9 +148,8 @@ func sendImageForPrompt(event *mevent.Event, prompt string) error {
 	if err != nil {
 		log.Error("Failed to decode the image", err)
 		//continue
-		return err
+		return nil, err
 	}
-	sendImage(event, "image.png", image)
 	//}
-	return nil
+	return image, err
 }
