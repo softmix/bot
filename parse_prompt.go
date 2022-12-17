@@ -8,7 +8,17 @@ import (
 
 func ParsePrompt(prompt string) txt2img_request {
 	var request txt2img_request
+	denoisingStrengthForced := false
 	hrForced := false
+
+	supportedSamplers := map[string]string{
+		"ddim":    "DDIM",
+		"euler":   "Euler",
+		"euler_a": "Euler a",
+		"heun":    "Heun",
+		"lms":     "LMS",
+		"plms":    "PLMS",
+	}
 
 	var re = regexp.MustCompile(`(\S+):(\S+)`)
 	matches := re.FindAllStringSubmatch(prompt, -1)
@@ -17,6 +27,11 @@ func ParsePrompt(prompt string) txt2img_request {
 		case "cfg":
 			if v, err := strconv.ParseFloat(match[2], 32); err == nil {
 				request.CfgScale = clampf(float32(v), 1, 30)
+			}
+		case "ds":
+			if v, err := strconv.ParseFloat(match[2], 32); err == nil {
+				denoisingStrengthForced = true
+				request.DenoisingStrength = clampf(float32(v), 0, 1)
 			}
 		case "count":
 			if v, err := strconv.ParseInt(match[2], 10, 32); err == nil {
@@ -37,7 +52,11 @@ func ParsePrompt(prompt string) txt2img_request {
 			}
 		case "steps":
 			if v, err := strconv.ParseInt(match[2], 10, 32); err == nil {
-				request.Steps = clamp((int(v)+64-1)&-64, 1, 150)
+				request.Steps = clamp(int(v), 1, 150)
+			}
+		case "sampler":
+			if sampler, ok := supportedSamplers[match[2]]; ok {
+				request.SamplerName = sampler
 			}
 		}
 		prompt = strings.Replace(prompt, match[0], "", 1)
@@ -47,7 +66,7 @@ func ParsePrompt(prompt string) txt2img_request {
 		request.EnableHR = true
 	}
 
-	if request.EnableHR {
+	if request.EnableHR && !denoisingStrengthForced {
 		request.DenoisingStrength = 0.7
 	}
 

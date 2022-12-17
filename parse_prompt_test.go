@@ -19,28 +19,30 @@ func TestParsePrompt(t *testing.T) {
 	}{
 		{
 			name: "a basic prompt with negatives and some configuration",
-			args: args{"some happy prompt h:512 w:600 ### not this tho cfg:12.3"},
+			args: args{"some happy prompt h:512 w:600 ### not this tho cfg:12.3 ds:0.6"},
 			want: txt2img_request{
-				Prompt:         "some happy prompt",
-				NegativePrompt: "not this tho",
-				CfgScale:       12.3,
-				Height:         512,
-				Width:          640, // rounded to multiple of 64
+				Prompt:            "some happy prompt",
+				NegativePrompt:    "not this tho",
+				CfgScale:          12.3,
+				DenoisingStrength: 0.6,
+				Height:            512,
+				Width:             640, // rounded to multiple of 64
 			},
 		},
 		{
 			name: "a prompt with invalid values",
-			args: args{"w:g cfg:31 h:0 w:3000 steps:1000"},
+			args: args{"w:g cfg:31 h:0 w:3000 steps:1000 count:10 sampler:foobar ds:2"},
 			want: txt2img_request{
-				CfgScale: 30, Width: 2048, Height: 512, Steps: 150, // clamped
-				DenoisingStrength: 0.7, EnableHR: true, // when a dimension >= 1024
+				// sampler ignored
+				DenoisingStrength: 1, CfgScale: 30, Width: 2048, Height: 512, NIter: 9, Steps: 150, // clamped
+				EnableHR: true, // when a dimension >= 1024
 			},
 		},
 		{
-			name: "requesting multiple images",
-			args: args{"count:10"},
+			name: "setting the sampler",
+			args: args{"sampler:ddim"},
 			want: txt2img_request{
-				NIter: 9, //clamped
+				SamplerName: "DDIM",
 			},
 		},
 	}
