@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"net/http"
+	"os"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -14,6 +15,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/attachment"
 	mevent "maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 )
 
 func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
@@ -29,10 +31,19 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 	case mevent.MsgText, mevent.MsgNotice:
 		if body == "ping" {
 			sendMessage(event, "pong")
+			return
 		}
 
 		if body == "yay" {
 			sendReaction(event, "🎉")
+			return
+		}
+
+		if body == "!gen help" {
+			if help, err := os.ReadFile("./help.md"); err == nil {
+				sendMarkdown(event, string(help))
+				return
+			}
 		}
 
 		if strings.HasPrefix(body, "!gen ") {
@@ -42,11 +53,13 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			}
 			sendReaction(event, "👌")
 			if image, err := getImageForPrompt(event, prompt); err != nil {
+				sendMessage(event, "i'm afraid i can't let you do that")
 				sendReaction(event, "❌")
 			} else {
 				sendImage(event, "image.png", image)
 				sendReaction(event, "✔️")
 			}
+			return
 		}
 		break
 	case mevent.MsgEmote:
@@ -58,6 +71,11 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 
 func sendReaction(event *mevent.Event, reaction string) {
 	Bot.client.SendReaction(event.RoomID, event.ID, reaction)
+}
+
+func sendMarkdown(event *mevent.Event, text string) {
+	content := format.RenderMarkdown(text, true, false)
+	SendMessage(event.RoomID, &content)
 }
 
 func sendMessage(event *mevent.Event, text string) {
