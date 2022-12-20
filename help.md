@@ -1,5 +1,7 @@
 # how to use the bot
 
+all image generation commands start with `!gen <prompt>`
+
 in your prompt, you can use the following parameters:
 | variable | values | explanation |
 | --- | --- | --- |
