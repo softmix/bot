@@ -3,14 +3,14 @@
 all image generation commands start with `!gen <prompt>`
 
 in your prompt, you can use the following parameters:
-| variable | values | explanation |
-| --- | --- | --- |
-| `h`/`w` |  `512`-`2048` | 8height/width. converted to multiples of 64. |
-| `cfg` | `1`-`30` | cfg scale |
-| `steps` | `1`-`150` | sampling steps |
-| `count` | `1`-`9` | number of images generated, will be returned in a grid |
-| `hr:1` | `true`/`false` | enable hr. automatically on when a dimension is >= 1024 |
-| `ds:.7` | `0`-`1` | denoising strength |
+| variable | values | example | explanation |
+| --- | --- | --- | --- |
+| `h`/`w` |  `512`-`2048` | `h:1024 w:704` | height/width. converted to multiples of 64. |
+| `cfg` | `1`-`30` | `cfg:12` | cfg scale |
+| `steps` | `1`-`150` | `steps:40` | sampling steps |
+| `count` | `1`-`9` | `count:4` | number of images generated, will be returned in a grid |
+| `hr` | `1`/`0` | `hr:1` | enable hr. automatically on when a dimension is >= 1024 |
+| `ds` | `0`-`1` | `ds:.6` | denoising strength |
 
 ## negative prompts
 
