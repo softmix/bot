@@ -21,6 +21,7 @@ func TestParsePrompt(t *testing.T) {
 			name: "a basic prompt with negatives and some configuration",
 			args: args{"some happy prompt h:512 w:600 ### not this tho cfg:12.3 ds:.6 hr:1 sampler:ddim"},
 			want: txt2img_request{
+				HRUpscaler:        "Latent",
 				Prompt:            "some happy prompt",
 				NegativePrompt:    "not this tho",
 				CfgScale:          12.3,
