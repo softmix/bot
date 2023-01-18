@@ -5,11 +5,12 @@ all image generation commands start with `!gen <prompt>`
 in your prompt, you can use the following parameters:
 | variable | values | example | explanation |
 | --- | --- | --- | --- |
-| `h`/`w` |  `512`-`2048` | `h:1024 w:704` | height/width. converted to multiples of 64. |
+| `h`/`w` |  `64`-`768` | `h:320 w:512` | initial height/width. converted to multiples of 64. |
 | `cfg` | `1`-`30` | `cfg:12` | cfg scale |
 | `steps` | `1`-`150` | `steps:40` | sampling steps |
 | `count` | `1`-`9` | `count:4` | number of images generated, will be returned in a grid |
-| `hr` | `1`/`0` | `hr:1` | enable hr. automatically on when a dimension is >= 1024 |
+| `hr` | `1`/`0` | `hr:1` | enable hr |
+| `scale` | `1`-`4` | `scale:2.5` | upscaling factor when hr is enabled |
 | `ds` | `0`-`1` | `ds:.6` | denoising strength |
 
 ## negative prompts

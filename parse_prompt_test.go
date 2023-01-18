@@ -36,8 +36,7 @@ func TestParsePrompt(t *testing.T) {
 			args: args{"w:g cfg:31 h:0 w:3000 steps:1000 count:10 sampler:foobar ds:2"},
 			want: txt2img_request{
 				// sampler ignored
-				DenoisingStrength: 1, CfgScale: 30, Width: 2048, Height: 512, NIter: 9, Steps: 150, // clamped
-				EnableHR: true, // when a dimension >= 1024
+				DenoisingStrength: 1, CfgScale: 30, Width: 768, Height: 64, NIter: 9, Steps: 150, // clamped
 			},
 		},
 		{

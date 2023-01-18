@@ -21,12 +21,12 @@ func ParsePrompt(prompt string) txt2img_request {
 		}
 	}
 
-	if !forcedSettings["hr"] && (request.Width >= 1024 || request.Height >= 1024) {
-		request.EnableHR = true
-	}
-
 	if !forcedSettings["ds"] && request.EnableHR {
 		request.DenoisingStrength = 0.7
+	}
+
+	if !forcedSettings["upscaler"] && request.EnableHR {
+		request.HRUpscaler = "Latent"
 	}
 
 	prompts := strings.Split(prompt, "###")
@@ -70,6 +70,16 @@ func handleSetting(request *txt2img_request, forcedSettings *map[string]bool, se
 		"plms":    "PLMS",
 	}
 
+	supportedUpscalers := map[string]string{
+		"latent":   "Latent",
+		"none":     "None",
+		"lanczos":  "Lanczos",
+		"nearest":  "Nearest",
+		"esrgan":   "ESRGAN_4x",
+		"lollypop": "lollypop",
+		"ldsr":     "LDSR",
+	}
+
 	switch setting {
 	case "cfg":
 		if v, err := strconv.ParseFloat(value, 32); err == nil {
@@ -89,18 +99,28 @@ func handleSetting(request *txt2img_request, forcedSettings *map[string]bool, se
 		return true
 	case "h":
 		if v, err := strconv.ParseInt(value, 10, 32); err == nil {
-			request.Height = clamp((int(v)+64-1)&-64, 512, 2048)
+			request.Height = clamp((int(v)+64-1)&-64, 64, 768)
 		}
 		return true
 	case "w":
 		if v, err := strconv.ParseInt(value, 10, 32); err == nil {
-			request.Width = clamp((int(v)+64-1)&-64, 512, 2048)
+			request.Width = clamp((int(v)+64-1)&-64, 64, 768)
 		}
 		return true
 	case "hr":
 		if v, err := strconv.ParseBool(value); err == nil {
-			(*forcedSettings)["hr"] = true
 			request.EnableHR = v
+		}
+		return true
+	case "scale":
+		if v, err := strconv.ParseFloat(value, 32); err == nil {
+			request.HRScale = clampf(float32(v), 1, 4)
+		}
+		return true
+	case "upscaler":
+		if sampler, ok := supportedUpscalers[value]; ok {
+			(*forcedSettings)["upscaler"] = true
+			request.HRUpscaler = sampler
 		}
 		return true
 	case "steps":

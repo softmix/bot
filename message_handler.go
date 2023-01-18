@@ -26,6 +26,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 
 	log.Info("Parsed content:", event.Content.Parsed)
 	content := event.Content.AsMessage()
+	content.RemoveReplyFallback()
 	body := content.Body
 	switch content.MsgType {
 	case mevent.MsgText, mevent.MsgNotice:
@@ -53,7 +54,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			}
 			sendReaction(event, "👌")
 			if image, err := getImageForPrompt(event, prompt); err != nil {
-				sendMessage(event, "i'm afraid i can't let you do that")
+				sendMessage(event, "i'm sorry dave, i'm afraid i can't do that")
 				sendReaction(event, "❌")
 			} else {
 				sendImage(event, "image.png", image)
