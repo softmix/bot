@@ -73,7 +73,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 				sendMessage(event, "i'm sorry dave, i'm afraid i can't do that")
 				sendReaction(event, "❌")
 			} else {
-				sendImage(event, "image.png", image)
+				sendImage(event, "image.jpg", image)
 				sendReaction(event, "✔️")
 			}
 			return
