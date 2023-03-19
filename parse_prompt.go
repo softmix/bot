@@ -6,7 +6,13 @@ import (
 	"strings"
 )
 
-func ParsePrompt(prompt string) txt2img_request {
+func ParsePromptForTxt2Txt(prompt string) llama_request {
+	var request llama_request
+	request.Data = append(request.Data, prompt)
+	return request
+}
+
+func ParsePromptForTxt2Img(prompt string) txt2img_request {
 	var request txt2img_request
 	forcedSettings := map[string]bool{}
 

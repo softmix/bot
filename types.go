@@ -81,6 +81,15 @@ type txt2img_response struct {
 	Info string `json:"info"`
 }
 
+type llama_request struct {
+	Data []string `json:"data"`
+}
+
+type llama_response struct {
+	Data     []string `json:"data"`
+	Duration float64  `json:"duration"`
+}
+
 type BotType struct {
 	client        *mautrix.Client
 	configuration Configuration

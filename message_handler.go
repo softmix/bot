@@ -47,6 +47,22 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			}
 		}
 
+		if strings.HasPrefix(body, "!predict ") {
+			prompt := strings.TrimPrefix(body, "!predict ")
+			if len(prompt) == 0 {
+				break
+			}
+			sendReaction(event, "🧠")
+			if reply, err := getPredictionForPrompt(event, prompt); err != nil {
+				sendMessage(event, "idk dude")
+				sendReaction(event, "❌")
+			} else {
+				sendMessage(event, reply)
+				sendReaction(event, "✔️")
+			}
+			return
+		}
+
 		if strings.HasPrefix(body, "!gen ") {
 			prompt := strings.TrimPrefix(body, "!gen ")
 			if len(prompt) == 0 {
@@ -83,7 +99,15 @@ func sendMessage(event *mevent.Event, text string) {
 	content := mevent.MessageEventContent{
 		MsgType: mevent.MsgText,
 		Body:    text,
+
+		RelatesTo: &mevent.RelatesTo{
+			EventID: event.ID,
+			InReplyTo: &mevent.InReplyTo{
+				EventID: event.ID,
+			},
+		},
 	}
+
 	SendMessage(event.RoomID, &content)
 }
 
@@ -138,7 +162,7 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 }
 
 func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
-	req_body := ParsePrompt(prompt)
+	req_body := ParsePromptForTxt2Img(prompt)
 
 	json_body, err := json.Marshal(req_body)
 	if err != nil {
@@ -171,4 +195,34 @@ func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
 	}
 	//}
 	return image, err
+}
+
+func getPredictionForPrompt(event *mevent.Event, prompt string) (string, error) {
+	req_body := ParsePromptForTxt2Txt(prompt)
+
+	json_body, err := json.Marshal(req_body)
+	if err != nil {
+		log.Error("Failed to marshal fields to JSON", err)
+		return "", err
+	}
+
+	resp, err := http.Post(Bot.configuration.LLAMAAPIURL, "application/json", bytes.NewBuffer(json_body))
+	if err != nil {
+		log.Error("Failed to POST to LLaMA API", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("response Status:", resp.Status)
+	fmt.Println("response Headers:", resp.Header)
+	fmt.Println("response Headers:", resp.Body)
+
+	var res llama_response
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		log.Error("Couldn't decode the response", err)
+		return "", err
+	}
+	reply := res.Data[0]
+
+	return reply, err
 }

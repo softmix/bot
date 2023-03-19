@@ -52,7 +52,7 @@ func TestParsePrompt(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := json.Marshal(ParsePrompt(tt.args.prompt))
+			got, _ := json.Marshal(ParsePromptForTxt2Img(tt.args.prompt))
 			want, _ := json.Marshal(tt.want)
 			if !reflect.DeepEqual(string(got), string(want)) {
 				log.Errorf("ParsePrompt() = %v, want %v", string(got), string(want))
