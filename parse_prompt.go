@@ -118,6 +118,11 @@ func handleSetting(request *txt2img_request, forcedSettings *map[string]bool, se
 			request.EnableHR = v
 		}
 		return true
+	case "fr":
+		if v, err := strconv.ParseBool(value); err == nil {
+			request.RestoreFaces = v
+		}
+		return true
 	case "scale":
 		if v, err := strconv.ParseFloat(value, 32); err == nil {
 			request.HRScale = clampf(float32(v), 1, 4)
