@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"net/http"
@@ -185,6 +186,11 @@ func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
 		log.Error("Couldn't decode the response", err)
 		return nil, err
 	}
+
+	if len(res.Images) == 0 {
+		return nil, errors.New("No images in response")
+	}
+
 	encoded_image := res.Images[0]
 	//for _, encoded_image := range res.Images {
 	image, err := base64.StdEncoding.DecodeString(encoded_image)
@@ -222,6 +228,11 @@ func getPredictionForPrompt(event *mevent.Event, prompt string) (string, error) 
 		log.Error("Couldn't decode the response", err)
 		return "", err
 	}
+
+	if len(res.Data) == 0 {
+		return "", errors.New("No data in response")
+	}
+
 	reply := res.Data[0]
 
 	return reply, err
