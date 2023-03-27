@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	// _ "github.com/motemen/go-loghttp/global"
 	log "github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 	mcrypto "maunium.net/go/mautrix/crypto"
@@ -24,8 +25,8 @@ func main() {
 	flag.Parse()
 
 	// Configure logging
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetLevel(log.DebugLevel)
+	// log.SetFormatter(&log.JSONFormatter{})
+	log.SetLevel(log.InfoLevel)
 	log.Info("Starting")
 
 	// Load configuration
@@ -38,6 +39,7 @@ func main() {
 	if err := Bot.configuration.Parse(configBytes); err != nil {
 		log.Fatal("Failed to read config!")
 	}
+
 	username := mid.UserID(Bot.configuration.Username)
 	_, _, err = username.Parse()
 	if err != nil {
@@ -65,9 +67,16 @@ func main() {
 		for range c { // when the process is killed
 			log.Info("Cleaning up")
 			db.Close()
+			Bot.txt2txt.SaveHistories()
 			os.Exit(0)
 		}
 	}()
+
+	Bot.txt2txt = NewTxt2txt()
+	err = Bot.txt2txt.LoadHistories()
+	if err != nil {
+		log.Fatal("Couldn't load histories", err)
+	}
 
 	Bot.stateStore = store.NewStateStore(db)
 	if err := Bot.stateStore.CreateTables(); err != nil {

@@ -6,6 +6,7 @@
 *.dylib
 bot
 config.yaml
+ai_history.json
 test.gob
 *.db
 

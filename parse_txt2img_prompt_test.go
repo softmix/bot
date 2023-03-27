@@ -8,7 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func TestParsePrompt(t *testing.T) {
+func TestParseTxt2ImgPrompt(t *testing.T) {
 	type args struct {
 		prompt string
 	}

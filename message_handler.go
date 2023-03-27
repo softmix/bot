@@ -2,14 +2,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"image"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	log "github.com/sirupsen/logrus"
@@ -48,19 +45,33 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			}
 		}
 
-		if strings.HasPrefix(body, "!predict ") {
-			prompt := strings.TrimPrefix(body, "!predict ")
+		if body == "!forget" {
+			Bot.txt2txt.Histories[string(event.RoomID)] = &History{Messages: make([]Message, 0)}
+			err := Bot.txt2txt.SaveHistories()
+			if err != nil {
+				log.Error("Failed to save history", err)
+				sendMessage(event, "Couldn't forget")
+				return
+			}
+			sendReaction(event, "🤯")
+		}
+
+		if strings.HasPrefix(body, Bot.configuration.DisplayName+": ") {
+			prompt := strings.TrimPrefix(body, Bot.configuration.DisplayName+": ")
 			if len(prompt) == 0 {
 				break
 			}
-			sendReaction(event, "🧠")
-			if reply, err := getPredictionForPrompt(event, prompt); err != nil {
-				sendMessage(event, "idk dude")
+
+			Bot.client.UserTyping(event.RoomID, true, 10*time.Second)
+
+			if reply, err := Bot.txt2txt.GetPredictionForPrompt(event, prompt); err != nil {
 				sendReaction(event, "❌")
 			} else {
 				sendMessage(event, reply)
-				sendReaction(event, "✔️")
 			}
+
+			Bot.client.UserTyping(event.RoomID, false, 0)
+
 			return
 		}
 
@@ -160,80 +171,4 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 		content.URL = upload.ContentURI.CUString()
 	}
 	SendMessage(event.RoomID, content)
-}
-
-func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
-	req_body := ParsePromptForTxt2Img(prompt)
-
-	json_body, err := json.Marshal(req_body)
-	if err != nil {
-		log.Error("Failed to marshal fields to JSON", err)
-		return nil, err
-	}
-
-	resp, err := http.Post(Bot.configuration.SDAPIURL, "application/json", bytes.NewBuffer(json_body))
-	if err != nil {
-		log.Error("Failed to POST to SD API", err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-
-	var res txt2img_response
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		log.Error("Couldn't decode the response", err)
-		return nil, err
-	}
-
-	if len(res.Images) == 0 {
-		return nil, errors.New("No images in response")
-	}
-
-	encoded_image := res.Images[0]
-	//for _, encoded_image := range res.Images {
-	image, err := base64.StdEncoding.DecodeString(encoded_image)
-	if err != nil {
-		log.Error("Failed to decode the image", err)
-		//continue
-		return nil, err
-	}
-	//}
-	return image, err
-}
-
-func getPredictionForPrompt(event *mevent.Event, prompt string) (string, error) {
-	req_body := ParsePromptForTxt2Txt(prompt)
-
-	json_body, err := json.Marshal(req_body)
-	if err != nil {
-		log.Error("Failed to marshal fields to JSON", err)
-		return "", err
-	}
-
-	resp, err := http.Post(Bot.configuration.LLAMAAPIURL, "application/json", bytes.NewBuffer(json_body))
-	if err != nil {
-		log.Error("Failed to POST to LLaMA API", err)
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-	fmt.Println("response Headers:", resp.Body)
-
-	var res llama_response
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		log.Error("Couldn't decode the response", err)
-		return "", err
-	}
-
-	if len(res.Data) == 0 {
-		return "", errors.New("No data in response")
-	}
-
-	reply := res.Data[0]
-
-	return reply, err
 }

@@ -5,8 +5,9 @@ import (
 )
 
 type Configuration struct {
-	SDAPIURL    string `yaml:"sdapi_url"`
-	LLAMAAPIURL string `yaml:"llamaapi_url"`
+	Txt2ImgAPIURL      string `yaml:"txt2img_api_url"`
+	Txt2TxtAPIURL      string `yaml:"txt2txt_api_url"`
+	Txt2TxtHistoryFile string `yaml:"txt2txt_history_file"`
 
 	// Authentication
 	Password   string `yaml:"password"`
