@@ -1,5 +1,5 @@
 txt2img_api_url: "http://example.com/sdapi/v1/txt2img"
-txt2txt_api_url: "http://example.com/run/textgen"
+txt2txt_api_url: "ws://example.com/queue/join"
 password: "passw0rd"
 username: "@some_user:matrix.org"
 homeserver: "https://matrix.org"

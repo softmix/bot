@@ -1,15 +1,16 @@
 package main
 
 import (
-	"bytes"
+	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
+	"math/big"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
@@ -25,15 +26,6 @@ type AICharacter struct {
 	Greeting       string
 	WorldScenario  string
 	DialogueSample string
-}
-
-type txt2txt_request struct {
-	Data []interface{} `json:"data"`
-}
-
-type txt2txt_response struct {
-	Data     []string `json:"data"`
-	Duration float64  `json:"duration"`
 }
 
 type Message struct {
@@ -61,9 +53,8 @@ func (b *Txt2txt) parsePromptForTxt2Txt(contextIdentifier string, prompt string)
 	return contextualPrompt
 }
 
-func requestForPrompt(prompt string) txt2txt_request {
-	var request txt2txt_request
-	data := []interface{}{
+func dataForPrompt(prompt string) []interface{} {
+	return []interface{}{
 		prompt, // Prompt
 		200,    // MaxNewTokens
 		true,   // DoSample
@@ -81,8 +72,6 @@ func requestForPrompt(prompt string) txt2txt_request {
 		false,  // EarlyStopping
 		-1,     // Seed
 	}
-	request.Data = data
-	return request
 }
 
 func NewTxt2txt() *Txt2txt {
@@ -147,51 +136,13 @@ func (b *Txt2txt) PrintAllHistories() {
 func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (string, error) {
 	contextualPrompt := b.parsePromptForTxt2Txt(string(event.RoomID), prompt)
 
-	req_body := requestForPrompt(contextualPrompt)
-
-	json_body, err := json.Marshal(req_body)
+	reply, err := run(contextualPrompt)
 	if err != nil {
-		log.Error("Failed to marshal fields to JSON", err)
+		fmt.Println("Error:", err)
 		return "", err
 	}
 
-	resp, err := http.Post(Bot.configuration.Txt2TxtAPIURL, "application/json", bytes.NewBuffer(json_body))
-	if err != nil {
-		log.Error("Failed to POST to LLaMA API", err)
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-
-	buf, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Errorf("Error reading request body: %v", err.Error())
-		return "", err
-	}
-	fmt.Println("response Body:", string(buf))
-
-	reader := ioutil.NopCloser(bytes.NewBuffer(buf))
-	resp.Body = reader
-
-	var res txt2txt_response
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		log.Error("Couldn't decode the response", err)
-		return "", err
-	}
-
-	if len(res.Data) == 0 {
-		return "", errors.New("No data in response")
-	}
-
-	reply := res.Data[0][len(contextualPrompt):]
-	k := strings.Index(reply, "\nYou:")
-	if k != -1 {
-		reply = reply[:k]
-	}
-
-	k = strings.Index(reply, "\n"+b.aiCharacter.Name)
+	k := strings.Index(reply, "\n"+b.aiCharacter.Name)
 	if k != -1 {
 		reply = reply[:k]
 	}
@@ -204,4 +155,102 @@ func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (str
 
 	log.Info("Bot response", reply)
 	return reply, err
+}
+
+func run(prompt string) (string, error) {
+	session := randomHash()
+
+	conn, _, err := websocket.DefaultDialer.Dial(Bot.configuration.Txt2TxtAPIURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	defer conn.Close()
+
+	var finalReponse string
+	var processStartTime time.Time
+
+processLoop:
+	for {
+		var content map[string]interface{}
+
+		err := conn.ReadJSON(&content)
+		if err != nil {
+			log.Error("Error reading JSON", err)
+			break
+		}
+
+		msg, ok := content["msg"].(string)
+		if !ok {
+			continue
+		}
+
+		switch msg {
+		case "send_hash":
+			err := conn.WriteJSON(map[string]interface{}{
+				"session_hash": session,
+				"fn_index":     12,
+			})
+			if err != nil {
+				fmt.Println("Error sending JSON:", err)
+				return "", err
+			}
+		case "estimation":
+			continue
+		case "send_data":
+			err := conn.WriteJSON(map[string]interface{}{
+				"session_hash": session,
+				"fn_index":     12,
+				"data":         dataForPrompt(prompt),
+			})
+			if err != nil {
+				fmt.Println("Error sending JSON:", err)
+				return "", err
+			}
+		case "process_starts":
+			processStartTime = time.Now()
+			continue
+		case "process_generating", "process_completed":
+			output, ok := content["output"].(map[string]interface{})
+			if ok {
+				data, ok := output["data"].([]interface{})
+				if ok && len(data) > 0 {
+					response, ok := data[0].(string)
+					if ok {
+						response = response[len(prompt):]
+						lines := strings.Split(response, "\n")
+						foundYouPrefix := false
+						for _, line := range lines {
+							if strings.HasPrefix(line, "You:") {
+								foundYouPrefix = true
+								lines = lines[:len(lines)-1]
+								finalReponse = strings.Join(lines, "\n")
+								log.Info("Response generated in ", time.Since(processStartTime))
+								break processLoop
+							}
+						}
+						if !foundYouPrefix {
+							finalReponse = strings.Join(lines, "\n")
+						}
+					}
+				}
+			}
+			if msg == "process_completed" {
+				break
+			}
+		}
+	}
+
+	log.Info("Response generated in ", time.Since(processStartTime))
+	return finalReponse, nil
+}
+
+func randomHash() string {
+	chars := "abcdefghijklmnopqrstuvwxyz0123456789"
+	result := make([]byte, 9)
+	for i := range result {
+		index, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		result[i] = chars[index.Int64()]
+	}
+	return string(result)
 }
