@@ -46,7 +46,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 		}
 
 		if body == "!forget" {
-			Bot.txt2txt.Histories[string(event.RoomID)] = &History{Messages: make([]Message, 0)}
+			delete(Bot.txt2txt.Histories, string(event.RoomID))
 			err := Bot.txt2txt.SaveHistories()
 			if err != nil {
 				log.Error("Failed to save history", err)
