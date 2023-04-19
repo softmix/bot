@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bot/tools"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -17,72 +19,117 @@ import (
 
 type Txt2txt struct {
 	aiCharacter AICharacter
-	Histories   map[string]*History
+	Histories   map[string]string
 }
 
 type AICharacter struct {
-	Name           string
-	Persona        string
-	Greeting       string
-	WorldScenario  string
-	DialogueSample string
+	instructions string
 }
 
-type Message struct {
-	Sender  string
-	Content string
+func (b *Txt2txt) contextualPrompt(roomID string, prompt string) string {
+	history := Bot.txt2txt.Histories[roomID]
+	if history != "" {
+		return strings.Join([]string{
+			strings.TrimSpace(history),
+			"Human: " + prompt,
+			"",
+			//"Thought: Do I need to use a tool?",
+		}, "\n\n")
+	} else {
+		return strings.Join([]string{
+			Bot.txt2txt.aiCharacter.instructions,
+			//toolPrompt(),
+			"Begin!",
+			"",
+			"Human: " + prompt,
+			"",
+			//"Thought: Do I need to use a tool?",
+		}, "\n\n")
+
+	}
 }
 
-type History struct {
-	Messages []Message
-}
-
-func (b *Txt2txt) parsePromptForTxt2Txt(contextIdentifier string, prompt string) string {
-	aiPreprompt := ""
-	aiPreprompt += b.aiCharacter.Name + "'s persona: " + b.aiCharacter.Persona + "\n"
-	aiPreprompt += "The world scenario: " + b.aiCharacter.WorldScenario + "\n"
-	aiPreprompt += "<START>\n" + b.aiCharacter.DialogueSample + "\n"
-
-	aiHistory := ""
-	for _, m := range b.GetHistory(contextIdentifier).Messages {
-		aiHistory += m.Sender + ": " + m.Content + "\n"
+func runTool(toolName string, input string) (string, error) {
+	tool, found := tools.AvailableTools[toolName]
+	if !found {
+		return "", errors.New("Unknown tool")
 	}
 
-	contextualPrompt := aiPreprompt + aiHistory + "You: " + prompt + "\n" + b.aiCharacter.Name + ":"
+	return tool.Run(input)
+}
 
-	return contextualPrompt
+func toolPrompt() string {
+	var toolNames []string
+	for _, tool := range tools.AvailableTools {
+		toolNames = append(toolNames, tool.Name())
+	}
+
+	toolNamesAndDescriptions := ""
+	for _, tool := range tools.AvailableTools {
+		toolNamesAndDescriptions += "- " + tool.Name() + ": " + tool.Description() + "\n"
+	}
+
+	return strings.Join([]string{
+		"Assistant has access to the following tools:",
+		"",
+		"",
+		toolNamesAndDescriptions,
+		"",
+		"",
+		"To use a tool, please use the following format:",
+		"",
+		"```",
+		"Thought: Do I need to use a tool? Yes",
+		"Action: the action to take, should be one of [" + strings.Join(toolNames, ", ") + "]",
+		"Action Input: the input to the action",
+		"Observation: the result of the action",
+		"```",
+		"",
+		"When you have a response to say to the Human, or if you do not need to use a tool, you MUST use the format:",
+		"",
+		"```",
+		"Thought: Do I need to use a tool? No",
+		"Assistant: [your response here]",
+		"```",
+	}, "\n")
 }
 
 func dataForPrompt(prompt string) []interface{} {
-	return []interface{}{
-		prompt, // Prompt
-		200,    // MaxNewTokens
-		true,   // DoSample
-		0.5,    // Temperature
-		0.9,    // TopP
-		1,      // TypicalP
-		1.05,   // RepetitionPenalty
-		1.0,    // EncoderRepetitionPenalty
-		0,      // TopK
-		0,      // MinLength
-		0,      // NoRepeatNgramSize
-		1,      // NumBeams
-		0,      // PenaltyAlpha
-		1,      // LengthPenalty
-		false,  // EarlyStopping
-		-1,     // Seed
+	params := map[string]interface{}{
+		"max_new_tokens":             750,
+		"do_sample":                  true,
+		"temperature":                0.5,
+		"top_p":                      0.9,
+		"typical_p":                  1,
+		"repetition_penalty":         1.05,
+		"encoder_repetition_penalty": 1.0,
+		"top_k":                      0,
+		"min_length":                 0,
+		"no_repeat_ngram_size":       0,
+		"num_beams":                  1,
+		"penalty_alpha":              0,
+		"length_penalty":             1,
+		"early_stopping":             false,
+		"seed":                       -1,
+		"add_bos_token":              true,
+		"truncation_length":          2048,
+		"custom_stopping_strings":    []string{},
+		"ban_eos_token":              false,
 	}
+	return []interface{}{prompt, params}
 }
 
 func NewTxt2txt() *Txt2txt {
+	instructions_body, err := ioutil.ReadFile("prompts_instructions.md")
+	if err != nil {
+		log.Fatal("Couldn't read prompts_instructions.md")
+	}
+
 	return &Txt2txt{
 		aiCharacter: AICharacter{
-			Name:           "Bot",
-			Persona:        "Bot is a helpful AI chatbot that always provides useful and detailed answers to User's requests and questions. Bot tries to be as informative and friendly as possible.",
-			Greeting:       "Hello! I am Bot, your informative assistant. How may I help you today?",
-			DialogueSample: "You: Hi. Can you help me with something?\nBot: Hello, this is Johm. How can I help?\nYou: Have you heard of the latest nuclear fusion experiment from South Korea? I heard their experiment got hotter than the sun.\nBot: Yes, I have heard about the experiment. Scientists in South Korea have managed to sustain a nuclear fusion reaction running at temperatures in excess of 100 million°C for 30 seconds for the first time and have finally been able to achieve a net energy gain when carrying out a nuclear fusion experiment. That's nearly seven times hotter than the core of the Sun, which has a temperature of 15 million degrees kelvins! That's exciting!\nYou: Wow! That's super interesting to know. Change of topic, I plan to change to the iPhone 14 this year.\nBot: I see. What makes you want to change to iPhone 14?\nYou: My phone right now is too old, so I want to upgrade.\nBot: That's always a good reason to upgrade. You should be able to save money by trading in your old phone for credit. I hope you enjoy your new phone when you upgrade.",
+			instructions: string(instructions_body),
 		},
-		Histories: make(map[string]*History),
+		Histories: make(map[string]string),
 	}
 }
 
@@ -115,43 +162,18 @@ func (b *Txt2txt) LoadHistories() error {
 	return nil
 }
 
-func (b *Txt2txt) AddMessage(channel string, message Message) {
-	if b.Histories[channel] == nil {
-		b.Histories[channel] = &History{Messages: make([]Message, 0)}
-	}
-	b.Histories[channel].Messages = append(b.Histories[channel].Messages, message)
-}
-
-func (b *Txt2txt) GetHistory(channel string) *History {
-	if b.Histories[channel] == nil {
-		b.Histories[channel] = &History{Messages: make([]Message, 0)}
-	}
-	return b.Histories[channel]
-}
-
-func (b *Txt2txt) PrintAllHistories() {
-	log.Info(b.Histories)
-}
-
 func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (string, error) {
-	contextualPrompt := b.parsePromptForTxt2Txt(string(event.RoomID), prompt)
+	contextualPrompt := b.contextualPrompt(string(event.RoomID), prompt)
 
 	reply, err := run(contextualPrompt)
 	if err != nil {
 		fmt.Println("Error:", err)
-		return "", err
+		return prompt, err
 	}
 
-	k := strings.Index(reply, "\n"+b.aiCharacter.Name)
-	if k != -1 {
-		reply = reply[:k]
-	}
+	b.Histories[string(event.RoomID)] = reply
 
-	reply = strings.TrimSpace(reply)
-
-	b.AddMessage(string(event.RoomID), Message{Sender: "You", Content: prompt})
-	b.AddMessage(string(event.RoomID), Message{Sender: b.aiCharacter.Name, Content: reply})
-	b.PrintAllHistories()
+	reply = strings.TrimSpace(reply[len(contextualPrompt):])
 
 	log.Info("Bot response", reply)
 	return reply, err
@@ -167,7 +189,7 @@ func run(prompt string) (string, error) {
 
 	defer conn.Close()
 
-	var finalReponse string
+	var lines []string
 	var processStartTime time.Time
 
 processLoop:
@@ -179,17 +201,20 @@ processLoop:
 			log.Error("Error reading JSON", err)
 			break
 		}
+		log.Info(content)
 
 		msg, ok := content["msg"].(string)
 		if !ok {
 			continue
 		}
 
+		fn_index := 34
+
 		switch msg {
 		case "send_hash":
 			err := conn.WriteJSON(map[string]interface{}{
 				"session_hash": session,
-				"fn_index":     12,
+				"fn_index":     fn_index,
 			})
 			if err != nil {
 				fmt.Println("Error sending JSON:", err)
@@ -198,10 +223,15 @@ processLoop:
 		case "estimation":
 			continue
 		case "send_data":
-			err := conn.WriteJSON(map[string]interface{}{
+			dataJson, err := json.Marshal(dataForPrompt(prompt))
+			if err != nil {
+				panic(err)
+			}
+			log.Info("dataJson: ", string(dataJson))
+			err = conn.WriteJSON(map[string]interface{}{
 				"session_hash": session,
-				"fn_index":     12,
-				"data":         dataForPrompt(prompt),
+				"fn_index":     fn_index,
+				"data":         []interface{}{string(dataJson)},
 			})
 			if err != nil {
 				fmt.Println("Error sending JSON:", err)
@@ -216,21 +246,14 @@ processLoop:
 				data, ok := output["data"].([]interface{})
 				if ok && len(data) > 0 {
 					response, ok := data[0].(string)
+
+					log.Info("\n", response)
 					if ok {
-						response = response[len(prompt):]
-						lines := strings.Split(response, "\n")
-						foundYouPrefix := false
-						for _, line := range lines {
-							if strings.HasPrefix(line, "You:") {
-								foundYouPrefix = true
-								lines = lines[:len(lines)-1]
-								finalReponse = strings.Join(lines, "\n")
-								log.Info("Response generated in ", time.Since(processStartTime))
-								break processLoop
-							}
-						}
-						if !foundYouPrefix {
-							finalReponse = strings.Join(lines, "\n")
+						lines = strings.Split(response, "\n")
+						last_line := lines[len(lines)-1]
+						if strings.HasPrefix(last_line, "Human:") {
+							lines = lines[:len(lines)-1]
+							break processLoop
 						}
 					}
 				}
@@ -242,7 +265,7 @@ processLoop:
 	}
 
 	log.Info("Response generated in ", time.Since(processStartTime))
-	return finalReponse, nil
+	return strings.Join(lines, "\n"), nil
 }
 
 func randomHash() string {
