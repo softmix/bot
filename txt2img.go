@@ -93,6 +93,10 @@ func ParsePromptForTxt2Img(prompt string) txt2img_request {
 	var request txt2img_request
 	forcedSettings := map[string]bool{}
 
+	// request.Width = 576
+	// request.Height = 640
+	request.EnableHR = true
+
 	var re = regexp.MustCompile(`(\S+):(\S+)`)
 	matches := re.FindAllStringSubmatch(prompt, -1)
 	for _, match := range matches {

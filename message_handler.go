@@ -29,7 +29,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 	switch content.MsgType {
 	case mevent.MsgText, mevent.MsgNotice:
 		if body == "ping" {
-			sendMessage(event, "pong")
+			sendReply(event, "pong")
 			return
 		}
 
@@ -41,8 +41,8 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 		if body == "!gen help" {
 			if help, err := os.ReadFile("./help.md"); err == nil {
 				sendMarkdown(event, string(help))
-				return
 			}
+			return
 		}
 
 		if body == "!forget" {
@@ -50,28 +50,10 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			err := Bot.txt2txt.SaveHistories()
 			if err != nil {
 				log.Error("Failed to save history", err)
-				sendMessage(event, "Couldn't forget")
+				sendReply(event, "Couldn't forget")
 				return
 			}
 			sendReaction(event, "🤯")
-		}
-
-		if strings.HasPrefix(body, Bot.configuration.DisplayName+": ") {
-			prompt := strings.TrimPrefix(body, Bot.configuration.DisplayName+": ")
-			if len(prompt) == 0 {
-				break
-			}
-
-			Bot.client.UserTyping(event.RoomID, true, 10*time.Second)
-
-			if reply, err := Bot.txt2txt.GetPredictionForPrompt(event, prompt); err != nil {
-				sendReaction(event, "❌")
-			} else {
-				sendMessage(event, reply)
-			}
-
-			Bot.client.UserTyping(event.RoomID, false, 0)
-
 			return
 		}
 
@@ -82,7 +64,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			}
 			sendReaction(event, "👌")
 			if image, err := getImageForPrompt(event, prompt); err != nil {
-				sendMessage(event, "i'm sorry dave, i'm afraid i can't do that")
+				sendReply(event, "i'm sorry dave, i'm afraid i can't do that")
 				sendReaction(event, "❌")
 			} else {
 				sendImage(event, "image.jpg", image)
@@ -90,6 +72,27 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			}
 			return
 		}
+
+		if strings.HasPrefix(body, Bot.configuration.DisplayName+": ") || len(Bot.stateStore.GetRoomMembers(event.RoomID)) == 2 {
+			prompt := strings.TrimPrefix(body, Bot.configuration.DisplayName+": ")
+			if len(prompt) == 0 {
+				break
+			}
+
+			Bot.client.UserTyping(event.RoomID, true, 10*time.Second)
+
+			reply, err := Bot.txt2txt.GetPredictionForPrompt(event, prompt)
+			if err != nil || len(reply) == 0 {
+				sendReaction(event, "❌")
+			} else {
+				sendMarkdown(event, strings.TrimPrefix(reply, "### Assistant:"))
+			}
+
+			Bot.client.UserTyping(event.RoomID, false, 0)
+
+			return
+		}
+
 		break
 	case mevent.MsgEmote:
 		break
@@ -107,7 +110,7 @@ func sendMarkdown(event *mevent.Event, text string) {
 	SendMessage(event.RoomID, &content)
 }
 
-func sendMessage(event *mevent.Event, text string) {
+func sendReply(event *mevent.Event, text string) {
 	content := mevent.MessageEventContent{
 		MsgType: mevent.MsgText,
 		Body:    text,
@@ -118,6 +121,15 @@ func sendMessage(event *mevent.Event, text string) {
 				EventID: event.ID,
 			},
 		},
+	}
+
+	SendMessage(event.RoomID, &content)
+}
+
+func sendMessage(event *mevent.Event, text string) {
+	content := mevent.MessageEventContent{
+		MsgType: mevent.MsgText,
+		Body:    text,
 	}
 
 	SendMessage(event.RoomID, &content)

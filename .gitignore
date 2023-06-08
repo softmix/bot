@@ -9,6 +9,7 @@ config.yaml
 ai_history.json
 test.gob
 *.db
+characters/
 
 # Test binary, built with `go test -c`
 *.test

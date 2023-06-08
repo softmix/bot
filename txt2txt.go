@@ -31,21 +31,32 @@ func (b *Txt2txt) contextualPrompt(roomID string, prompt string) string {
 	if history != "" {
 		return strings.Join([]string{
 			strings.TrimSpace(history),
-			"Human: " + prompt,
-			"",
+			"{{user}}: " + prompt,
+			"{{character}}: ",
 			//"Thought: Do I need to use a tool?",
 		}, "\n\n")
 	} else {
 		return strings.Join([]string{
-			Bot.txt2txt.aiCharacter.instructions,
+			initialPromt(),
 			//toolPrompt(),
-			"Begin!",
-			"",
-			"Human: " + prompt,
-			"",
+			"{{user}}: " + prompt,
+			"{{character}}: ",
 			//"Thought: Do I need to use a tool?",
 		}, "\n\n")
 
+	}
+}
+
+func initialPromt() string {
+	if len(os.Args) > 1 {
+		data, err := ioutil.ReadFile(os.Args[1])
+		if err != nil {
+			log.Error(err)
+			return ""
+		}
+		return string(data)
+	} else {
+		return Bot.txt2txt.aiCharacter.instructions
 	}
 }
 
@@ -70,7 +81,7 @@ func toolPrompt() string {
 	}
 
 	return strings.Join([]string{
-		"Assistant has access to the following tools:",
+		"{{character}} has access to the following tools:",
 		"",
 		"",
 		toolNamesAndDescriptions,
@@ -89,16 +100,16 @@ func toolPrompt() string {
 		"",
 		"```",
 		"Thought: Do I need to use a tool? No",
-		"Assistant: [your response here]",
+		"{{character}}: [your response here]",
 		"```",
 	}, "\n")
 }
 
 func dataForPrompt(prompt string) []interface{} {
 	params := map[string]interface{}{
-		"max_new_tokens":             750,
+		"max_new_tokens":             250,
 		"do_sample":                  true,
-		"temperature":                0.5,
+		"temperature":                0.9,
 		"top_p":                      0.9,
 		"typical_p":                  1,
 		"repetition_penalty":         1.05,
@@ -112,7 +123,7 @@ func dataForPrompt(prompt string) []interface{} {
 		"early_stopping":             false,
 		"seed":                       -1,
 		"add_bos_token":              true,
-		"truncation_length":          2048,
+		"truncation_length":          8192,
 		"custom_stopping_strings":    []string{},
 		"ban_eos_token":              false,
 	}
@@ -163,7 +174,7 @@ func (b *Txt2txt) LoadHistories() error {
 }
 
 func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (string, error) {
-	contextualPrompt := b.contextualPrompt(string(event.RoomID), prompt)
+	contextualPrompt := strings.TrimSpace(b.contextualPrompt(string(event.RoomID), prompt)) + " "
 
 	reply, err := run(contextualPrompt)
 	if err != nil {
@@ -173,7 +184,11 @@ func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (str
 
 	b.Histories[string(event.RoomID)] = reply
 
-	reply = strings.TrimSpace(reply[len(contextualPrompt):])
+	if len(reply) > len(contextualPrompt) {
+		reply = strings.TrimSpace(reply[len(contextualPrompt):])
+	} else {
+		reply = ""
+	}
 
 	log.Info("Bot response", reply)
 	return reply, err
@@ -208,7 +223,7 @@ processLoop:
 			continue
 		}
 
-		fn_index := 34
+		fn_index := 43
 
 		switch msg {
 		case "send_hash":
@@ -251,7 +266,7 @@ processLoop:
 					if ok {
 						lines = strings.Split(response, "\n")
 						last_line := lines[len(lines)-1]
-						if strings.HasPrefix(last_line, "Human:") {
+						if strings.HasPrefix(last_line, "### Human:") || strings.HasPrefix(last_line, "You:") || strings.HasPrefix(last_line, "{{user}}:") {
 							lines = lines[:len(lines)-1]
 							break processLoop
 						}
