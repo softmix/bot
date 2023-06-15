@@ -74,7 +74,7 @@ type IncomingData struct {
 	History History `json:"history,omitempty"`
 }
 
-func dataForPrompt(user_input string, history History) RequestData {
+func dataForPrompt(username, user_input string, history History) RequestData {
 	return RequestData{
 		UserInput: user_input,
 		History:   history,
@@ -82,7 +82,7 @@ func dataForPrompt(user_input string, history History) RequestData {
 		Mode:                "chat",
 		Character:           Bot.txt2txt.aiCharacter.name,
 		InstructionTemplate: "None",
-		YourName:            "You", // TODO
+		YourName:            username,
 
 		Regenerate:             false,
 		Continue:               false,
@@ -175,7 +175,11 @@ func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (str
 		history.Internal = [][]string{}
 	}
 
-	reply, err := run(dataForPrompt(prompt, history))
+	username, err := Bot.client.GetDisplayName(event.Sender)
+	if err != nil {
+		return prompt, err
+	}
+	reply, err := run(dataForPrompt(username.DisplayName, prompt, history))
 	if err != nil {
 		fmt.Println("Error:", err)
 		return prompt, err
