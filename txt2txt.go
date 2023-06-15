@@ -1,16 +1,12 @@
 package main
 
 import (
-	"bot/tools"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
@@ -19,115 +15,109 @@ import (
 
 type Txt2txt struct {
 	aiCharacter AICharacter
-	Histories   map[string]string
+	Histories   map[string]History
 }
 
 type AICharacter struct {
+	name         string
 	instructions string
 }
 
-func (b *Txt2txt) contextualPrompt(roomID string, prompt string) string {
-	history := Bot.txt2txt.Histories[roomID]
-	if history != "" {
-		return strings.Join([]string{
-			strings.TrimSpace(history),
-			"{{user}}: " + prompt,
-			"{{character}}: ",
-			//"Thought: Do I need to use a tool?",
-		}, "\n\n")
-	} else {
-		return strings.Join([]string{
-			initialPromt(),
-			//toolPrompt(),
-			"{{user}}: " + prompt,
-			"{{character}}: ",
-			//"Thought: Do I need to use a tool?",
-		}, "\n\n")
-
-	}
+type RequestData struct {
+	UserInput              string   `json:"user_input"`
+	History                History  `json:"history"`
+	Mode                   string   `json:"mode"`
+	Character              string   `json:"character"`
+	InstructionTemplate    string   `json:"instruction_template"`
+	YourName               string   `json:"your_name"`
+	Regenerate             bool     `json:"regenerate"`
+	Continue               bool     `json:"_continue"`
+	StopAtNewline          bool     `json:"stop_at_newline"`
+	ChatPromptSize         int      `json:"chat_prompt_size"`
+	ChatGenerationAttempts int      `json:"chat_generation_attempts"`
+	ChatInstructCommand    string   `json:"chat-instruct_command"`
+	MaxNewTokens           int      `json:"max_new_tokens"`
+	DoSample               bool     `json:"do_sample"`
+	Temperature            float64  `json:"temperature"`
+	TopP                   float64  `json:"top_p"`
+	TypicalP               float64  `json:"typical_p"`
+	EpsilonCutoff          int      `json:"epsilon_cutoff"`
+	EtaCutoff              int      `json:"eta_cutoff"`
+	Tfs                    int      `json:"tfs"`
+	TopA                   int      `json:"top_a"`
+	RepetitionPenalty      float64  `json:"repetition_penalty"`
+	TopK                   int      `json:"top_k"`
+	MinLength              int      `json:"min_length"`
+	NoRepeatNgramSize      int      `json:"no_repeat_ngram_size"`
+	NumBeams               int      `json:"num_beams"`
+	PenaltyAlpha           int      `json:"penalty_alpha"`
+	LengthPenalty          int      `json:"length_penalty"`
+	EarlyStopping          bool     `json:"early_stopping"`
+	MirostatMode           int      `json:"mirostat_mode"`
+	MirostatTau            int      `json:"mirostat_tau"`
+	MirostatEta            float64  `json:"mirostat_eta"`
+	Seed                   int      `json:"seed"`
+	AddBOSToken            bool     `json:"add_bos_token"`
+	TruncationLength       int      `json:"truncation_length"`
+	BanEOSToken            bool     `json:"ban_eos_token"`
+	SkipSpecialTokens      bool     `json:"skip_special_tokens"`
+	StoppingStrings        []string `json:"stopping_strings"`
 }
 
-func initialPromt() string {
-	if len(os.Args) > 1 {
-		data, err := ioutil.ReadFile(os.Args[1])
-		if err != nil {
-			log.Error(err)
-			return ""
-		}
-		return string(data)
-	} else {
-		return Bot.txt2txt.aiCharacter.instructions
-	}
+type History struct {
+	Internal [][]string `json:"internal"`
+	Visible  [][]string `json:"visible"`
 }
 
-func runTool(toolName string, input string) (string, error) {
-	tool, found := tools.AvailableTools[toolName]
-	if !found {
-		return "", errors.New("Unknown tool")
-	}
-
-	return tool.Run(input)
+type IncomingData struct {
+	Event   string  `json:"event"`
+	History History `json:"history,omitempty"`
 }
 
-func toolPrompt() string {
-	var toolNames []string
-	for _, tool := range tools.AvailableTools {
-		toolNames = append(toolNames, tool.Name())
-	}
+func dataForPrompt(user_input string, history History) RequestData {
+	return RequestData{
+		UserInput: user_input,
+		History:   history,
 
-	toolNamesAndDescriptions := ""
-	for _, tool := range tools.AvailableTools {
-		toolNamesAndDescriptions += "- " + tool.Name() + ": " + tool.Description() + "\n"
-	}
+		Mode:                "chat",
+		Character:           Bot.txt2txt.aiCharacter.name,
+		InstructionTemplate: "None",
+		YourName:            "You", // TODO
 
-	return strings.Join([]string{
-		"{{character}} has access to the following tools:",
-		"",
-		"",
-		toolNamesAndDescriptions,
-		"",
-		"",
-		"To use a tool, please use the following format:",
-		"",
-		"```",
-		"Thought: Do I need to use a tool? Yes",
-		"Action: the action to take, should be one of [" + strings.Join(toolNames, ", ") + "]",
-		"Action Input: the input to the action",
-		"Observation: the result of the action",
-		"```",
-		"",
-		"When you have a response to say to the Human, or if you do not need to use a tool, you MUST use the format:",
-		"",
-		"```",
-		"Thought: Do I need to use a tool? No",
-		"{{character}}: [your response here]",
-		"```",
-	}, "\n")
-}
+		Regenerate:             false,
+		Continue:               false,
+		StopAtNewline:          false,
+		ChatPromptSize:         2048,
+		ChatGenerationAttempts: 1,
+		ChatInstructCommand:    "",
 
-func dataForPrompt(prompt string) []interface{} {
-	params := map[string]interface{}{
-		"max_new_tokens":             250,
-		"do_sample":                  true,
-		"temperature":                0.9,
-		"top_p":                      0.9,
-		"typical_p":                  1,
-		"repetition_penalty":         1.05,
-		"encoder_repetition_penalty": 1.0,
-		"top_k":                      0,
-		"min_length":                 0,
-		"no_repeat_ngram_size":       0,
-		"num_beams":                  1,
-		"penalty_alpha":              0,
-		"length_penalty":             1,
-		"early_stopping":             false,
-		"seed":                       -1,
-		"add_bos_token":              true,
-		"truncation_length":          8192,
-		"custom_stopping_strings":    []string{},
-		"ban_eos_token":              false,
+		MaxNewTokens:      250,
+		DoSample:          true,
+		Temperature:       1.0,
+		TopP:              0.9,
+		TypicalP:          1,
+		EpsilonCutoff:     0,
+		EtaCutoff:         0,
+		Tfs:               1,
+		TopA:              0,
+		RepetitionPenalty: 1.1,
+		TopK:              0,
+		MinLength:         0,
+		NoRepeatNgramSize: 0,
+		NumBeams:          1,
+		PenaltyAlpha:      0,
+		LengthPenalty:     1,
+		EarlyStopping:     false,
+		MirostatMode:      0,
+		MirostatTau:       5,
+		MirostatEta:       0.1,
+		Seed:              -1,
+		AddBOSToken:       true,
+		TruncationLength:  2048,
+		BanEOSToken:       false,
+		SkipSpecialTokens: true,
+		StoppingStrings:   []string{},
 	}
-	return []interface{}{prompt, params}
 }
 
 func NewTxt2txt() *Txt2txt {
@@ -138,9 +128,10 @@ func NewTxt2txt() *Txt2txt {
 
 	return &Txt2txt{
 		aiCharacter: AICharacter{
+			name:         "Neuro-sama", // TODO
 			instructions: string(instructions_body),
 		},
-		Histories: make(map[string]string),
+		Histories: make(map[string]History),
 	}
 }
 
@@ -162,6 +153,8 @@ func (b *Txt2txt) LoadHistories() error {
 	data, err := ioutil.ReadFile(Bot.configuration.Txt2TxtHistoryFile)
 	if err != nil {
 		if os.IsNotExist(err) {
+			b.Histories = map[string]History{}
+			b.SaveHistories()
 			return nil
 		}
 		return err
@@ -174,113 +167,74 @@ func (b *Txt2txt) LoadHistories() error {
 }
 
 func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (string, error) {
-	contextualPrompt := strings.TrimSpace(b.contextualPrompt(string(event.RoomID), prompt)) + " "
+	history := b.Histories[string(event.RoomID)]
+	if len(history.Visible) == 0 {
+		history.Visible = [][]string{}
+	}
+	if len(history.Internal) == 0 {
+		history.Internal = [][]string{}
+	}
 
-	reply, err := run(contextualPrompt)
+	reply, err := run(dataForPrompt(prompt, history))
 	if err != nil {
 		fmt.Println("Error:", err)
 		return prompt, err
 	}
 
-	b.Histories[string(event.RoomID)] = reply
-
-	if len(reply) > len(contextualPrompt) {
-		reply = strings.TrimSpace(reply[len(contextualPrompt):])
-	} else {
-		reply = ""
+	if len(reply.Visible[0]) > 0 {
+		b.Histories[string(event.RoomID)] = reply
+		b.SaveHistories()
 	}
 
-	log.Info("Bot response", reply)
-	return reply, err
+	log.Debug("Bot response", reply)
+	return reply.Visible[len(reply.Visible)-1][1], err
 }
 
-func run(prompt string) (string, error) {
-	session := randomHash()
-
+func run(requestData RequestData) (History, error) {
 	conn, _, err := websocket.DefaultDialer.Dial(Bot.configuration.Txt2TxtAPIURL, nil)
 	if err != nil {
-		return "", err
+		return requestData.History, err
 	}
-
 	defer conn.Close()
 
-	var lines []string
-	var processStartTime time.Time
-
-processLoop:
-	for {
-		var content map[string]interface{}
-
-		err := conn.ReadJSON(&content)
-		if err != nil {
-			log.Error("Error reading JSON", err)
-			break
-		}
-		log.Info(content)
-
-		msg, ok := content["msg"].(string)
-		if !ok {
-			continue
-		}
-
-		fn_index := 43
-
-		switch msg {
-		case "send_hash":
-			err := conn.WriteJSON(map[string]interface{}{
-				"session_hash": session,
-				"fn_index":     fn_index,
-			})
-			if err != nil {
-				fmt.Println("Error sending JSON:", err)
-				return "", err
-			}
-		case "estimation":
-			continue
-		case "send_data":
-			dataJson, err := json.Marshal(dataForPrompt(prompt))
-			if err != nil {
-				panic(err)
-			}
-			log.Info("dataJson: ", string(dataJson))
-			err = conn.WriteJSON(map[string]interface{}{
-				"session_hash": session,
-				"fn_index":     fn_index,
-				"data":         []interface{}{string(dataJson)},
-			})
-			if err != nil {
-				fmt.Println("Error sending JSON:", err)
-				return "", err
-			}
-		case "process_starts":
-			processStartTime = time.Now()
-			continue
-		case "process_generating", "process_completed":
-			output, ok := content["output"].(map[string]interface{})
-			if ok {
-				data, ok := output["data"].([]interface{})
-				if ok && len(data) > 0 {
-					response, ok := data[0].(string)
-
-					log.Info("\n", response)
-					if ok {
-						lines = strings.Split(response, "\n")
-						last_line := lines[len(lines)-1]
-						if strings.HasPrefix(last_line, "### Human:") || strings.HasPrefix(last_line, "You:") || strings.HasPrefix(last_line, "{{user}}:") {
-							lines = lines[:len(lines)-1]
-							break processLoop
-						}
-					}
-				}
-			}
-			if msg == "process_completed" {
-				break
-			}
-		}
+	messageBytes, err := json.Marshal(requestData)
+	if err != nil {
+		return requestData.History, err
 	}
 
-	log.Info("Response generated in ", time.Since(processStartTime))
-	return strings.Join(lines, "\n"), nil
+	log.Debug("sending:", string(messageBytes))
+	err = conn.WriteMessage(websocket.TextMessage, messageBytes)
+	if err != nil {
+		return requestData.History, err
+	}
+
+	var incomingData IncomingData
+	var result History
+	curLen := 0
+processLoop:
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			return requestData.History, err
+		}
+		log.Debug("received:", string(message))
+
+		err = json.Unmarshal(message, &incomingData)
+		if err != nil {
+			return requestData.History, err
+		}
+
+		switch incomingData.Event {
+		case "text_stream":
+			curMessage := incomingData.History.Visible[len(incomingData.History.Visible)-1][1][curLen:]
+			curLen += len(curMessage)
+			fmt.Print(curMessage)
+			result = incomingData.History
+		case "stream_end":
+			break processLoop
+		}
+	}
+	return result, nil
 }
 
 func randomHash() string {
