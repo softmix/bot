@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 )
 
 func TestParseTxt2ImgPrompt(t *testing.T) {
@@ -55,7 +55,7 @@ func TestParseTxt2ImgPrompt(t *testing.T) {
 			got, _ := json.Marshal(ParsePromptForTxt2Img(tt.args.prompt))
 			want, _ := json.Marshal(tt.want)
 			if !reflect.DeepEqual(string(got), string(want)) {
-				log.Errorf("ParsePrompt() = %v, want %v", string(got), string(want))
+				log.Error().Msgf("ParsePrompt() = %v, want %v", string(got), string(want))
 			}
 		})
 	}

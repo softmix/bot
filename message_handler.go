@@ -9,7 +9,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/attachment"
 	mevent "maunium.net/go/mautrix/event"
@@ -18,11 +18,11 @@ import (
 
 func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 	if event.Sender.String() == Bot.configuration.Username {
-		log.Infof("Event %s is from us, so not going to respond.", event.ID)
+		log.Info().Msgf("Event %s is from us, so not going to respond.", event.ID)
 		return
 	}
 
-	log.Info("Parsed content:", event.Content.Parsed)
+	log.Info().Msgf("Parsed content: %s", event.Content.Parsed)
 	content := event.Content.AsMessage()
 	content.RemoveReplyFallback()
 	body := content.Body
@@ -49,7 +49,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 			delete(Bot.txt2txt.Histories, string(event.RoomID))
 			err := Bot.txt2txt.SaveHistories()
 			if err != nil {
-				log.Error("Failed to save history", err)
+				log.Error().Err(err).Msg("Failed to save history")
 				sendReply(event, "Couldn't forget")
 				return
 			}
@@ -171,7 +171,7 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 
 	upload, err := Bot.client.UploadMedia(req)
 	if err != nil {
-		log.Error("Failed to upload media", err)
+		log.Error().Err(err).Msg("Failed to upload media")
 	}
 
 	if file != nil {

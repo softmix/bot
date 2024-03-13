@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/gorilla/websocket"
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -125,7 +125,7 @@ func dataForPrompt(username, user_input string, history History) RequestData {
 func NewTxt2txt() *Txt2txt {
 	instructions_body, err := ioutil.ReadFile("prompts_instructions.md")
 	if err != nil {
-		log.Fatal("Couldn't read prompts_instructions.md")
+		log.Fatal().Msg("Couldn't read prompts_instructions.md")
 	}
 
 	return &Txt2txt{
@@ -192,7 +192,7 @@ func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (str
 		b.SaveHistories()
 	}
 
-	log.Debug("Bot response", reply)
+	log.Debug().Msgf("Bot response: %s", reply)
 	return reply.Visible[len(reply.Visible)-1][1], err
 }
 
@@ -208,7 +208,7 @@ func run(requestData RequestData) (History, error) {
 		return requestData.History, err
 	}
 
-	log.Debug("sending:", string(messageBytes))
+	log.Debug().Msgf("Sending: %s", messageBytes)
 	err = conn.WriteMessage(websocket.TextMessage, messageBytes)
 	if err != nil {
 		return requestData.History, err
@@ -223,7 +223,7 @@ processLoop:
 		if err != nil {
 			return requestData.History, err
 		}
-		log.Debug("received:", string(message))
+		log.Debug().Msgf("Received: %s", message)
 
 		err = json.Unmarshal(message, &incomingData)
 		if err != nil {

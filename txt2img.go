@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 	mevent "maunium.net/go/mautrix/event"
 )
 
@@ -129,13 +129,13 @@ func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
 
 	json_body, err := json.Marshal(req_body)
 	if err != nil {
-		log.Error("Failed to marshal fields to JSON", err)
+		log.Error().Err(err).Msg("Failed to marshal fields to JSON")
 		return nil, err
 	}
 
 	resp, err := http.Post(Bot.configuration.Txt2ImgAPIURL, "application/json", bytes.NewBuffer(json_body))
 	if err != nil {
-		log.Error("Failed to POST to SD API", err)
+		log.Error().Err(err).Msg("Failed to POST to SD API")
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -145,7 +145,7 @@ func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
 
 	var res txt2img_response
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		log.Error("Couldn't decode the response", err)
+		log.Error().Err(err).Msg("Couldn't decode the response")
 		return nil, err
 	}
 
@@ -157,7 +157,7 @@ func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
 	//for _, encoded_image := range res.Images {
 	image, err := base64.StdEncoding.DecodeString(encoded_image)
 	if err != nil {
-		log.Error("Failed to decode the image", err)
+		log.Error().Err(err).Msg("Failed to decode the image")
 		//continue
 		return nil, err
 	}

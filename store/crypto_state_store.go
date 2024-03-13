@@ -8,7 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 	mevent "maunium.net/go/mautrix/event"
 	mid "maunium.net/go/mautrix/id"
 )
@@ -24,13 +24,13 @@ func (store *StateStore) GetEncryptionEvent(roomId mid.RoomID) *mevent.Encryptio
 	var encryptionEventJson []byte
 	if err := row.Scan(&encryptionEventJson); err != nil {
 		if err != sql.ErrNoRows {
-			log.Errorf("Failed to find encryption event JSON: %s. Error: %s", encryptionEventJson, err)
+			log.Error().Err(err).Msgf("Failed to find encryption event JSON: %s", encryptionEventJson)
 			return nil
 		}
 	}
 	var encryptionEvent mevent.EncryptionEventContent
 	if err := json.Unmarshal(encryptionEventJson, &encryptionEvent); err != nil {
-		log.Errorf("Failed to unmarshal encryption event JSON: %s. Error: %s", encryptionEventJson, err)
+		log.Error().Err(err).Msgf("Failed to unmarshal encryption event JSON: %s", encryptionEventJson)
 		return nil
 	}
 	return &encryptionEvent
@@ -54,7 +54,7 @@ func (store *StateStore) FindSharedRooms(userId mid.UserID) []mid.RoomID {
 }
 
 func (store *StateStore) SetMembership(event *mevent.Event) {
-	log.Debugf("Updating room_members for %s", event.RoomID)
+	log.Debug().Msgf("Updating room_members for %s", event.RoomID)
 	tx, err := store.DB.Begin()
 	if err != nil {
 		tx.Rollback()
@@ -64,12 +64,12 @@ func (store *StateStore) SetMembership(event *mevent.Event) {
 	if membershipEvent.Membership.IsInviteOrJoin() {
 		insert := "INSERT OR IGNORE INTO room_members VALUES (?, ?)"
 		if _, err := tx.Exec(insert, event.RoomID, event.GetStateKey()); err != nil {
-			log.Errorf("Failed to insert membership row for %s in %s", event.GetStateKey(), event.RoomID)
+			log.Error().Msgf("Failed to insert membership row for %s in %s", event.GetStateKey(), event.RoomID)
 		}
 	} else {
 		del := "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
 		if _, err := tx.Exec(del, event.RoomID, event.GetStateKey()); err != nil {
-			log.Errorf("Failed to delete membership row for %s in %s", event.GetStateKey(), event.RoomID)
+			log.Error().Msgf("Failed to delete membership row for %s in %s", event.GetStateKey(), event.RoomID)
 		}
 	}
 	tx.Commit()
@@ -107,7 +107,7 @@ func (store *StateStore) upsertEncryptionEvent(roomId mid.RoomID, encryptionEven
 }
 
 func (store *StateStore) SetEncryptionEvent(event *mevent.Event) {
-	log.Debugf("Updating encryption_event for %s", event.RoomID)
+	log.Debug().Msgf("Updating encryption_event for %s", event.RoomID)
 	tx, err := store.DB.Begin()
 	if err != nil {
 		tx.Rollback()
@@ -115,7 +115,7 @@ func (store *StateStore) SetEncryptionEvent(event *mevent.Event) {
 	}
 	err = store.upsertEncryptionEvent(event.RoomID, event)
 	if err != nil {
-		log.Errorf("Upsert encryption event failed %s", err)
+		log.Error().Msgf("Upsert encryption event failed %s", err)
 	}
 
 	tx.Commit()

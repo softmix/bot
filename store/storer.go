@@ -5,13 +5,13 @@
 package store
 
 import (
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 	"maunium.net/go/mautrix"
 	mid "maunium.net/go/mautrix/id"
 )
 
 func (store *StateStore) SaveFilterID(userID mid.UserID, filterID string) {
-	log.Debug("Upserting row into user_filter_ids")
+	log.Debug().Msg("Upserting row into user_filter_ids")
 	tx, err := store.DB.Begin()
 	if err != nil {
 		tx.Rollback()
@@ -43,7 +43,7 @@ func (store *StateStore) LoadFilterID(userID mid.UserID) string {
 }
 
 func (store *StateStore) SaveNextBatch(userID mid.UserID, nextBatchToken string) {
-	log.Debug("Upserting row into user_batch_tokens")
+	log.Debug().Msg("Upserting row into user_batch_tokens")
 	tx, err := store.DB.Begin()
 	if err != nil {
 		tx.Rollback()
