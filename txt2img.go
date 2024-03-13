@@ -93,9 +93,12 @@ func ParsePromptForTxt2Img(prompt string) txt2img_request {
 	var request txt2img_request
 	forcedSettings := map[string]bool{}
 
-	// request.Width = 576
-	// request.Height = 640
+	request.Width = 512
+	request.Height = 512
 	request.EnableHR = true
+	request.SamplerName = "Restart"
+	request.HRUpscaler = "4x_Valar_v1"
+	request.Steps = 20
 
 	var re = regexp.MustCompile(`(\S+):(\S+)`)
 	matches := re.FindAllStringSubmatch(prompt, -1)
@@ -110,10 +113,6 @@ func ParsePromptForTxt2Img(prompt string) txt2img_request {
 
 	if !forcedSettings["ds"] && request.EnableHR {
 		request.DenoisingStrength = 0.7
-	}
-
-	if !forcedSettings["upscaler"] && request.EnableHR {
-		request.HRUpscaler = "Latent"
 	}
 
 	prompts := strings.Split(prompt, "###")
@@ -168,6 +167,7 @@ func getImageForPrompt(event *mevent.Event, prompt string) ([]byte, error) {
 
 func handleSetting(request *txt2img_request, forcedSettings *map[string]bool, setting, value string) bool {
 	supportedSamplers := map[string]string{
+		"unipc":   "UniPC",
 		"ddim":    "DDIM",
 		"euler":   "Euler",
 		"euler_a": "Euler a",
@@ -236,7 +236,7 @@ func handleSetting(request *txt2img_request, forcedSettings *map[string]bool, se
 		return true
 	case "steps":
 		if v, err := strconv.ParseInt(value, 10, 32); err == nil {
-			request.Steps = clamp(int(v), 1, 150)
+			request.Steps = clamp(int(v), 4, 150)
 		}
 		return true
 	case "sampler":

@@ -51,6 +51,7 @@ type RequestData struct {
 	NoRepeatNgramSize      int      `json:"no_repeat_ngram_size"`
 	NumBeams               int      `json:"num_beams"`
 	PenaltyAlpha           int      `json:"penalty_alpha"`
+	Preset                 string   `json:"preset"`
 	LengthPenalty          int      `json:"length_penalty"`
 	EarlyStopping          bool     `json:"early_stopping"`
 	MirostatMode           int      `json:"mirostat_mode"`
@@ -91,21 +92,22 @@ func dataForPrompt(username, user_input string, history History) RequestData {
 		ChatGenerationAttempts: 1,
 		ChatInstructCommand:    "",
 
-		MaxNewTokens:      250,
+		MaxNewTokens:      500,
 		DoSample:          true,
-		Temperature:       1.0,
-		TopP:              0.9,
-		TypicalP:          1,
+		Temperature:       0.98,
+		TopP:              0.37,
+		TypicalP:          0.19,
 		EpsilonCutoff:     0,
 		EtaCutoff:         0,
 		Tfs:               1,
 		TopA:              0,
-		RepetitionPenalty: 1.1,
-		TopK:              0,
+		RepetitionPenalty: 1.18,
+		TopK:              100,
 		MinLength:         0,
 		NoRepeatNgramSize: 0,
 		NumBeams:          1,
 		PenaltyAlpha:      0,
+		Preset:            "None",
 		LengthPenalty:     1,
 		EarlyStopping:     false,
 		MirostatMode:      0,
@@ -116,7 +118,7 @@ func dataForPrompt(username, user_input string, history History) RequestData {
 		TruncationLength:  2048,
 		BanEOSToken:       false,
 		SkipSpecialTokens: true,
-		StoppingStrings:   []string{},
+		StoppingStrings:   []string{"END_OF_DIALOG"},
 	}
 }
 
@@ -128,7 +130,7 @@ func NewTxt2txt() *Txt2txt {
 
 	return &Txt2txt{
 		aiCharacter: AICharacter{
-			name:         "Neuro-sama", // TODO
+			name:         "TavernAI-Gray", // TODO
 			instructions: string(instructions_body),
 		},
 		Histories: make(map[string]History),

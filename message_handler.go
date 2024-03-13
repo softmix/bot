@@ -145,7 +145,7 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 		Info: &mevent.FileInfo{
 			Height:   cfg.Height,
 			MimeType: http.DetectContentType(imageBytes),
-			Width:    cfg.Height,
+			Width:    cfg.Width,
 			Size:     len(imageBytes),
 		},
 
