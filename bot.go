@@ -97,7 +97,7 @@ func main() {
 	}
 
 	_, err = DoRetry("login", func() (interface{}, error) {
-		return Bot.client.Login(&mautrix.ReqLogin{
+		return Bot.client.Login(context.Background(), &mautrix.ReqLogin{
 			Type: mautrix.AuthTypePassword,
 			Identifier: mautrix.UserIdentifier{
 				Type: mautrix.IdentifierTypeUser,
@@ -126,12 +126,12 @@ func main() {
 		Bot.client.DeviceID,
 		[]byte("standupbot_cryptostore_key"),
 	)
-	if err = sqlStore.DB.Upgrade(); err != nil {
+	if err = sqlStore.DB.Upgrade(context.Background()); err != nil {
 		log.Fatal().Msg("Could not upgrade tables for the SQL crypto store.")
 	}
 
 	Bot.olmMachine = mcrypto.NewOlmMachine(Bot.client, Bot.log, sqlStore, Bot.stateStore)
-	err = Bot.olmMachine.Load()
+	err = Bot.olmMachine.Load(context.Background())
 	if err != nil {
 		log.Error().Msg("'Could not initialize encryption support. Encrypted rooms will not work.")
 	}
@@ -139,19 +139,19 @@ func main() {
 	syncer := Bot.client.Syncer.(*mautrix.DefaultSyncer)
 	// Hook up the OlmMachine into the Matrix client so it receives e2ee
 	// keys and other such things.
-	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
-		Bot.olmMachine.ProcessSyncResponse(resp, since)
+	syncer.OnSync(func(_ context.Context, resp *mautrix.RespSync, since string) bool {
+		Bot.olmMachine.ProcessSyncResponse(context.Background(), resp, since)
 		return true
 	})
 
-	syncer.OnEventType(mevent.StateMember, func(eventSource mautrix.EventSource, event *mevent.Event) {
-		Bot.olmMachine.HandleMemberEvent(eventSource, event)
+	syncer.OnEventType(mevent.StateMember, func(ctx context.Context, event *mevent.Event) {
+		Bot.olmMachine.HandleMemberEvent(ctx, event)
 		Bot.stateStore.SetMembership(event)
 
 		if event.GetStateKey() == username.String() && event.Content.AsMember().Membership == mevent.MembershipInvite {
 			log.Info().Msgf("'Joining %s", event.RoomID)
 			_, err := DoRetry("join room", func() (interface{}, error) {
-				return Bot.client.JoinRoomByID(event.RoomID)
+				return Bot.client.JoinRoomByID(ctx, event.RoomID)
 			})
 			if err != nil {
 				log.Error().Err(err).Msgf("'Could not join channel %s", event.RoomID.String())
@@ -163,20 +163,20 @@ func main() {
 		}
 	})
 
-	syncer.OnEventType(mevent.StateEncryption, func(_ mautrix.EventSource, event *mevent.Event) {
+	syncer.OnEventType(mevent.StateEncryption, func(_ context.Context, event *mevent.Event) {
 		Bot.stateStore.SetEncryptionEvent(event)
 	})
 
-	syncer.OnEventType(mevent.EventMessage, func(source mautrix.EventSource, event *mevent.Event) { go HandleMessage(source, event) })
+	syncer.OnEventType(mevent.EventMessage, func(ctx context.Context, event *mevent.Event) { go HandleMessage(ctx, event) })
 
-	syncer.OnEventType(mevent.EventEncrypted, func(source mautrix.EventSource, event *mevent.Event) {
+	syncer.OnEventType(mevent.EventEncrypted, func(ctx context.Context, event *mevent.Event) {
 		decryptedEvent, err := Bot.olmMachine.DecryptMegolmEvent(context.Background(), event)
 		if err != nil {
 			log.Error().Err(err).Msgf("'Failed to decrypt message from %s in %s", event.Sender, event.RoomID)
 		} else {
 			log.Debug().Msgf("'Received encrypted event from %s in %s", event.Sender, event.RoomID)
 			if decryptedEvent.Type == mevent.EventMessage {
-				go HandleMessage(source, decryptedEvent)
+				go HandleMessage(ctx, decryptedEvent)
 			}
 		}
 	})

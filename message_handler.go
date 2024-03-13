@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"net/http"
 	"os"
@@ -16,7 +17,7 @@ import (
 	"maunium.net/go/mautrix/format"
 )
 
-func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
+func HandleMessage(ctx context.Context, event *mevent.Event) {
 	if event.Sender.String() == Bot.configuration.Username {
 		log.Info().Msgf("Event %s is from us, so not going to respond.", event.ID)
 		return
@@ -79,7 +80,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 				break
 			}
 
-			Bot.client.UserTyping(event.RoomID, true, 10*time.Second)
+			Bot.client.UserTyping(ctx, event.RoomID, true, 10*time.Second)
 
 			reply, err := Bot.txt2txt.GetPredictionForPrompt(event, prompt)
 			if err != nil || len(reply) == 0 {
@@ -88,7 +89,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 				sendMarkdown(event, strings.TrimPrefix(reply, "### Assistant:"))
 			}
 
-			Bot.client.UserTyping(event.RoomID, false, 0)
+			Bot.client.UserTyping(ctx, event.RoomID, false, 0)
 
 			return
 		}
@@ -102,7 +103,7 @@ func HandleMessage(source mautrix.EventSource, event *mevent.Event) {
 }
 
 func sendReaction(event *mevent.Event, reaction string) {
-	Bot.client.SendReaction(event.RoomID, event.ID, reaction)
+	Bot.client.SendReaction(context.Background(), event.RoomID, event.ID, reaction)
 }
 
 func sendMarkdown(event *mevent.Event, text string) {
@@ -158,7 +159,12 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 	}
 
 	uploadMime := content.Info.MimeType
-	if Bot.stateStore.IsEncrypted(event.RoomID) {
+	isEncrypted, err := Bot.stateStore.IsEncrypted(context.Background(), event.RoomID)
+	if err != nil {
+		log.Error().Err(err).Msg("Error checking if the state store is encrypted")
+		return
+	}
+	if isEncrypted {
 		file = attachment.NewEncryptedFile()
 		file.EncryptInPlace(imageBytes)
 		uploadMime = "application/octet-stream"
@@ -169,7 +175,7 @@ func sendImage(event *mevent.Event, filename string, imageBytes []byte) {
 		ContentType:  uploadMime,
 	}
 
-	upload, err := Bot.client.UploadMedia(req)
+	upload, err := Bot.client.UploadMedia(context.Background(), req)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to upload media")
 	}

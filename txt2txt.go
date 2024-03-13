@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -177,7 +178,7 @@ func (b *Txt2txt) GetPredictionForPrompt(event *event.Event, prompt string) (str
 		history.Internal = [][]string{}
 	}
 
-	username, err := Bot.client.GetDisplayName(event.Sender)
+	username, err := Bot.client.GetDisplayName(context.Background(), event.Sender)
 	if err != nil {
 		return prompt, err
 	}

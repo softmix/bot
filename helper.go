@@ -45,7 +45,12 @@ func DoRetry(description string, fn func() (interface{}, error)) (interface{}, e
 func SendMessage(roomId mid.RoomID, content *mevent.MessageEventContent) (resp *mautrix.RespSendEvent, err error) {
 	eventContent := &mevent.Content{Parsed: content}
 	r, err := DoRetry(fmt.Sprintf("send message to %s", roomId), func() (interface{}, error) {
-		if Bot.stateStore.IsEncrypted(roomId) {
+		isEncrypted, err := Bot.stateStore.IsEncrypted(context.Background(), roomId)
+		if err != nil {
+			log.Error().Err(err).Msg("Error checking if the state store is encrypted")
+			return nil, err
+		}
+		if isEncrypted {
 			log.Debug().Msgf("Sending encrypted event to %s", roomId)
 			encrypted, err := Bot.olmMachine.EncryptMegolmEvent(context.Background(), roomId, mevent.EventMessage, eventContent)
 
@@ -66,10 +71,10 @@ func SendMessage(roomId mid.RoomID, content *mevent.MessageEventContent) (resp *
 			}
 
 			encrypted.RelatesTo = content.RelatesTo // The m.relates_to field should be unencrypted, so copy it.
-			return Bot.client.SendMessageEvent(roomId, mevent.EventEncrypted, encrypted)
+			return Bot.client.SendMessageEvent(context.Background(), roomId, mevent.EventEncrypted, encrypted)
 		} else {
 			log.Debug().Msgf("Sending unencrypted event to %s", roomId)
-			return Bot.client.SendMessageEvent(roomId, mevent.EventMessage, eventContent)
+			return Bot.client.SendMessageEvent(context.Background(), roomId, mevent.EventMessage, eventContent)
 		}
 	})
 	if err != nil {

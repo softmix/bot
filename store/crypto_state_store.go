@@ -5,6 +5,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 
@@ -14,33 +15,37 @@ import (
 )
 
 // IsEncrypted returns whether a room is encrypted.
-func (store *StateStore) IsEncrypted(roomID mid.RoomID) bool {
-	return store.GetEncryptionEvent(roomID) != nil
+func (store *StateStore) IsEncrypted(ctx context.Context, roomID mid.RoomID) (bool, error) {
+	b, err := store.GetEncryptionEvent(ctx, roomID)
+	if err != nil {
+		return b != nil, err
+	}
+	return b != nil, nil
 }
 
-func (store *StateStore) GetEncryptionEvent(roomId mid.RoomID) *mevent.EncryptionEventContent {
+func (store *StateStore) GetEncryptionEvent(_ context.Context, roomId mid.RoomID) (*mevent.EncryptionEventContent, error) {
 	row := store.DB.QueryRow("SELECT encryption_event FROM rooms WHERE room_id = ?", roomId)
 
 	var encryptionEventJson []byte
 	if err := row.Scan(&encryptionEventJson); err != nil {
 		if err != sql.ErrNoRows {
 			log.Error().Err(err).Msgf("Failed to find encryption event JSON: %s", encryptionEventJson)
-			return nil
+			return nil, err
 		}
 	}
 	var encryptionEvent mevent.EncryptionEventContent
 	if err := json.Unmarshal(encryptionEventJson, &encryptionEvent); err != nil {
 		log.Error().Err(err).Msgf("Failed to unmarshal encryption event JSON: %s", encryptionEventJson)
-		return nil
+		return nil, err
 	}
-	return &encryptionEvent
+	return &encryptionEvent, nil
 }
 
-func (store *StateStore) FindSharedRooms(userId mid.UserID) []mid.RoomID {
+func (store *StateStore) FindSharedRooms(_ context.Context, userId mid.UserID) ([]mid.RoomID, error) {
 	rows, err := store.DB.Query("SELECT room_id FROM room_members WHERE user_id = ?", userId)
 	rooms := make([]mid.RoomID, 0)
 	if err != nil {
-		return rooms
+		return rooms, err
 	}
 	defer rows.Close()
 
@@ -50,7 +55,7 @@ func (store *StateStore) FindSharedRooms(userId mid.UserID) []mid.RoomID {
 			rooms = append(rooms, roomId)
 		}
 	}
-	return rooms
+	return rooms, nil
 }
 
 func (store *StateStore) SetMembership(event *mevent.Event) {
