@@ -8,7 +8,7 @@ require (
 	github.com/sethvargo/go-retry v0.2.4
 	github.com/sirupsen/logrus v1.9.3
 	gopkg.in/yaml.v2 v2.4.0
-	maunium.net/go/mautrix v0.14.0
+	maunium.net/go/mautrix v0.15.0
 )
 
 require (

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	_ "strconv"
@@ -46,17 +47,17 @@ func SendMessage(roomId mid.RoomID, content *mevent.MessageEventContent) (resp *
 	r, err := DoRetry(fmt.Sprintf("send message to %s", roomId), func() (interface{}, error) {
 		if Bot.stateStore.IsEncrypted(roomId) {
 			log.Debugf("Sending encrypted event to %s", roomId)
-			encrypted, err := Bot.olmMachine.EncryptMegolmEvent(roomId, mevent.EventMessage, eventContent)
+			encrypted, err := Bot.olmMachine.EncryptMegolmEvent(context.Background(), roomId, mevent.EventMessage, eventContent)
 
 			// These three errors mean we have to make a new Megolm session
 			if err == mcrypto.SessionExpired || err == mcrypto.SessionNotShared || err == mcrypto.NoGroupSession {
-				err = Bot.olmMachine.ShareGroupSession(roomId, Bot.stateStore.GetRoomMembers(roomId))
+				err = Bot.olmMachine.ShareGroupSession(context.Background(), roomId, Bot.stateStore.GetRoomMembers(roomId))
 				if err != nil {
 					log.Errorf("Failed to share group session to %s: %s", roomId, err)
 					return nil, err
 				}
 
-				encrypted, err = Bot.olmMachine.EncryptMegolmEvent(roomId, mevent.EventMessage, eventContent)
+				encrypted, err = Bot.olmMachine.EncryptMegolmEvent(context.Background(), roomId, mevent.EventMessage, eventContent)
 			}
 
 			if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bot/store"
+	"context"
 	"database/sql"
 	"flag"
 	"os"
@@ -9,7 +10,9 @@ import (
 	"syscall"
 
 	// _ "github.com/motemen/go-loghttp/global"
-	log "github.com/sirupsen/logrus"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"maunium.net/go/mautrix"
 	mcrypto "maunium.net/go/mautrix/crypto"
 	mevent "maunium.net/go/mautrix/event"
@@ -26,30 +29,30 @@ func main() {
 
 	// Configure logging
 	// log.SetFormatter(&log.JSONFormatter{})
-	log.SetLevel(log.InfoLevel)
-	log.Info("Starting")
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log.Info().Msg("Starting")
 
 	// Load configuration
 	configBytes, err := os.ReadFile(*configPath)
 	if err != nil {
-		log.Fatalf("Couldn't open the configuration file at %s: %s", *configPath, err)
+		log.Fatal().Msgf("Couldn't open the configuration file at %s: %s", *configPath, err)
 	}
 
 	Bot.configuration = Configuration{}
 	if err := Bot.configuration.Parse(configBytes); err != nil {
-		log.Fatal("Failed to read config!")
+		log.Fatal().Msg("Failed to read config!")
 	}
 
 	username := mid.UserID(Bot.configuration.Username)
 	_, _, err = username.Parse()
 	if err != nil {
-		log.Fatalf("Couldn't parse username: %s", username)
+		log.Fatal().Msgf("Couldn't parse username: %s", username)
 	}
 
 	// Open the config database
 	db, err := sql.Open("sqlite3", *dbFilename)
 	if err != nil {
-		log.Fatal("Could not open database.")
+		log.Fatal().Msg("Could not open database.")
 	}
 
 	// Make sure to exit cleanly
@@ -65,7 +68,7 @@ func main() {
 	)
 	go func() {
 		for range c { // when the process is killed
-			log.Info("Cleaning up")
+			log.Info().Msgf("'Cleaning up")
 			db.Close()
 			Bot.txt2txt.SaveHistories()
 			os.Exit(0)
@@ -75,22 +78,22 @@ func main() {
 	Bot.txt2txt = NewTxt2txt()
 	err = Bot.txt2txt.LoadHistories()
 	if err != nil {
-		log.Fatal("Couldn't load histories", err)
+		log.Fatal().Err(err).Msg("Couldn't load histories")
 	}
 
 	Bot.stateStore = store.NewStateStore(db)
 	if err := Bot.stateStore.CreateTables(); err != nil {
-		log.Fatal("Failed to create tables.", err)
+		log.Fatal().Err(err).Msg("Failed to create tables.")
 	}
 
 	deviceID := FindDeviceID(db, username.String())
 	if len(deviceID) > 0 {
-		log.Info("Found existing device ID in database:", deviceID)
+		log.Info().Msgf("'Found existing device ID in database: %s", deviceID)
 	}
 
 	Bot.client, err = mautrix.NewClient(Bot.configuration.Homeserver, "", "")
 	if err != nil {
-		log.Fatal("Couldn't initialize the Matrix client")
+		log.Fatal().Msg("Couldn't initialize the Matrix client")
 	}
 
 	_, err = DoRetry("login", func() (interface{}, error) {
@@ -107,9 +110,9 @@ func main() {
 		})
 	})
 	if err != nil {
-		log.Fatalf("Couldn't login to the homeserver.")
+		log.Fatal().Msgf("Couldn't login to the homeserver.")
 	}
-	log.Infof("Logged in as %s/%s", Bot.client.UserID, Bot.client.DeviceID)
+	log.Info().Msgf("Logged in as %s/%s", Bot.client.UserID, Bot.client.DeviceID)
 
 	// set the client store on the client.
 	Bot.client.Store = Bot.stateStore
@@ -124,13 +127,13 @@ func main() {
 		[]byte("standupbot_cryptostore_key"),
 	)
 	if err = sqlStore.DB.Upgrade(); err != nil {
-		log.Fatal("Could not upgrade tables for the SQL crypto store.")
+		log.Fatal().Msg("Could not upgrade tables for the SQL crypto store.")
 	}
 
-	Bot.olmMachine = mcrypto.NewOlmMachine(Bot.client, &CryptoLogger{}, sqlStore, Bot.stateStore)
+	Bot.olmMachine = mcrypto.NewOlmMachine(Bot.client, Bot.log, sqlStore, Bot.stateStore)
 	err = Bot.olmMachine.Load()
 	if err != nil {
-		log.Errorf("Could not initialize encryption support. Encrypted rooms will not work.")
+		log.Error().Msg("'Could not initialize encryption support. Encrypted rooms will not work.")
 	}
 
 	syncer := Bot.client.Syncer.(*mautrix.DefaultSyncer)
@@ -141,22 +144,22 @@ func main() {
 		return true
 	})
 
-	syncer.OnEventType(mevent.StateMember, func(_ mautrix.EventSource, event *mevent.Event) {
-		Bot.olmMachine.HandleMemberEvent(event)
+	syncer.OnEventType(mevent.StateMember, func(eventSource mautrix.EventSource, event *mevent.Event) {
+		Bot.olmMachine.HandleMemberEvent(eventSource, event)
 		Bot.stateStore.SetMembership(event)
 
 		if event.GetStateKey() == username.String() && event.Content.AsMember().Membership == mevent.MembershipInvite {
-			log.Info("Joining ", event.RoomID)
+			log.Info().Msgf("'Joining %s", event.RoomID)
 			_, err := DoRetry("join room", func() (interface{}, error) {
 				return Bot.client.JoinRoomByID(event.RoomID)
 			})
 			if err != nil {
-				log.Errorf("Could not join channel %s. Error %+v", event.RoomID.String(), err)
+				log.Error().Err(err).Msgf("'Could not join channel %s", event.RoomID.String())
 			} else {
-				log.Infof("Joined %s sucessfully", event.RoomID.String())
+				log.Info().Msgf("'Joined %s sucessfully", event.RoomID.String())
 			}
 		} else if event.GetStateKey() == username.String() && event.Content.AsMember().Membership.IsLeaveOrBan() {
-			log.Infof("Left or banned from %s", event.RoomID)
+			log.Info().Msgf("'Left or banned from %s", event.RoomID)
 		}
 	})
 
@@ -167,11 +170,11 @@ func main() {
 	syncer.OnEventType(mevent.EventMessage, func(source mautrix.EventSource, event *mevent.Event) { go HandleMessage(source, event) })
 
 	syncer.OnEventType(mevent.EventEncrypted, func(source mautrix.EventSource, event *mevent.Event) {
-		decryptedEvent, err := Bot.olmMachine.DecryptMegolmEvent(event)
+		decryptedEvent, err := Bot.olmMachine.DecryptMegolmEvent(context.Background(), event)
 		if err != nil {
-			log.Errorf("Failed to decrypt message from %s in %s: %+v", event.Sender, event.RoomID, err)
+			log.Error().Err(err).Msgf("'Failed to decrypt message from %s in %s", event.Sender, event.RoomID)
 		} else {
-			log.Debugf("Received encrypted event from %s in %s", event.Sender, event.RoomID)
+			log.Debug().Msgf("'Received encrypted event from %s in %s", event.Sender, event.RoomID)
 			if decryptedEvent.Type == mevent.EventMessage {
 				go HandleMessage(source, decryptedEvent)
 			}
@@ -179,10 +182,10 @@ func main() {
 	})
 
 	for {
-		log.Debugf("Running sync...")
+		log.Debug().Msg("'Running sync...")
 		err = Bot.client.Sync()
 		if err != nil {
-			log.Errorf("Sync failed. %+v", err)
+			log.Error().Err(err).Msg("Sync failed")
 		}
 	}
 }
@@ -190,7 +193,7 @@ func main() {
 func FindDeviceID(db *sql.DB, accountID string) (deviceID mid.DeviceID) {
 	err := db.QueryRow("SELECT device_id FROM crypto_account WHERE account_id=$1", accountID).Scan(&deviceID)
 	if err != nil && err != sql.ErrNoRows {
-		log.Warnf("Failed to scan device ID: %v", err)
+		log.Warn().Err(err).Msg("Failed to scan device ID")
 	}
 	return
 }
