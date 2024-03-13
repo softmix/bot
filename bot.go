@@ -13,11 +13,11 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix"
 	mcrypto "maunium.net/go/mautrix/crypto"
 	mevent "maunium.net/go/mautrix/event"
 	mid "maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
 )
 
 var Bot BotType
