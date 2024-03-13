@@ -74,7 +74,7 @@ func SendMessage(roomId mid.RoomID, content *mevent.MessageEventContent) (resp *
 	})
 	if err != nil {
 		// give up
-		log.Error().Err(err).Msgf("Failed to send message to %s: %s", roomId)
+		log.Error().Err(err).Msgf("Failed to send message to %s", roomId)
 		return nil, err
 	}
 	return r.(*mautrix.RespSendEvent), err
