@@ -30,12 +30,12 @@ jobs:
         run: go test -json > test-${{ env.GO_VERSION }}.json
 
       - name: Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-${{ env.GO_VERSION }}
           path: test-${{ env.GO_VERSION }}.json
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: bot
           path: bot
