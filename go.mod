@@ -3,7 +3,6 @@ module bot
 go 1.22.1
 
 require (
-	github.com/gorilla/websocket v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/rs/zerolog v1.32.0
 	github.com/sethvargo/go-retry v0.2.4
