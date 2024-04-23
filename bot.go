@@ -29,7 +29,7 @@ func main() {
 
 	// Configure logging
 	// log.SetFormatter(&log.JSONFormatter{})
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	log.Info().Msg("Starting")
 
 	// Load configuration

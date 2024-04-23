@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net/http"
 	"os"
@@ -28,10 +27,15 @@ type AICharacter struct {
 }
 
 type RequestData struct {
+	Model     string    `json:"model,omitempty"`
 	Messages  []Message `json:"messages"`
-	Mode      string    `json:"mode"`
+	Mode      string    `json:"mode,omitempty"`
 	Character string    `json:"character,omitempty"`
 	Stream    bool      `json:"stream"`
+	User      string    `json:"user,omitempty"`
+	Name1     string    `json:"name1,omitempty"`
+	Name2     string    `json:"name2,omitempty"`
+	MaxTokens int       `json:"max_tokens,omitempty"`
 }
 
 type IncomingData struct {
@@ -66,9 +70,15 @@ func dataForPrompt(username, user_input string, history []Message) RequestData {
 			Role:    "user",
 			Content: user_input,
 		}),
-		Mode:   "chat",
+		//Mode:   "chat",
+		Model:  "wolfram/miqu-1-120b",
 		Stream: true,
+		User:   username,
 		//Character: Bot.txt2txt.aiCharacter.name,
+		//Character: "AI",
+		//Name1:     username,
+		MaxTokens: 2000,
+		//Name2: Bot.txt2txt.aiCharacter.name,
 	}
 }
 
@@ -93,7 +103,7 @@ func (b *Txt2txt) SaveHistories() error {
 		return err
 	}
 
-	err = ioutil.WriteFile(Bot.configuration.Txt2TxtHistoryFile, data, 0644)
+	err = os.WriteFile(Bot.configuration.Txt2TxtHistoryFile, data, 0644)
 	if err != nil {
 		return err
 	}
@@ -102,7 +112,7 @@ func (b *Txt2txt) SaveHistories() error {
 }
 
 func (b *Txt2txt) LoadHistories() error {
-	data, err := ioutil.ReadFile(Bot.configuration.Txt2TxtHistoryFile)
+	data, err := os.ReadFile(Bot.configuration.Txt2TxtHistoryFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			b.Histories = map[string][]Message{}
@@ -157,6 +167,8 @@ func run(requestData RequestData) ([]Message, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	fmt.Print("Request data: ", req.Body)
+
 	// Execute the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -167,7 +179,7 @@ func run(requestData RequestData) ([]Message, error) {
 
 	// Ensure we only accept a 200 OK response indicating that the SSE stream is established
 	if resp.StatusCode != http.StatusOK {
-		return requestData.Messages, fmt.Errorf("received non-200 status code: %d", resp)
+		return requestData.Messages, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
 	}
 
 	// Create a buffered reader for the response body to read line by line
@@ -178,13 +190,23 @@ func run(requestData RequestData) ([]Message, error) {
 processLoop:
 	for {
 		line, err := reader.ReadBytes('\n')
+		log.Debug().Msgf("Received line: %s", line)
 		if err != nil {
-			if err.Error() == "unexpected EOF" {
+			if err.Error() == "EOF" {
 				log.Error().Err(err).Msg("Unexpected EOF")
 				break
 			}
 			log.Error().Err(err).Msg("Error reading line")
 			return requestData.Messages, err
+		}
+
+		if string(line) == "data: [DONE]" {
+			result = append(requestData.Messages, Message{
+				Role:    "assistant",
+				Content: currentMessageContent,
+			})
+			currentMessageContent = ""
+			break processLoop
 		}
 
 		// Process only lines starting with "data: ", which contains the actual message
@@ -195,18 +217,20 @@ processLoop:
 
 			err = json.Unmarshal(dataBytes, &incomingData)
 			if err != nil {
+				log.Error().Err(err).Msg("Error unmarshalling incoming data")
 				return requestData.Messages, err
 			}
+			log.Debug().Msgf("Incoming data: %+v", incomingData)
 
 			currentMessageContent += incomingData.Choices[0].Delta.Content
-
-			fmt.Print(incomingData.Choices[0].Delta.Content)
 
 			if incomingData.Choices[0].FinishReason != nil {
 				result = append(requestData.Messages, Message{
 					Role:    incomingData.Choices[0].Delta.Role,
 					Content: currentMessageContent,
 				})
+				log.Info().Msgf("Prompt tokens: %d, Completion tokens: %d, Total tokens: %d",
+					incomingData.Usage.PromptTokens, incomingData.Usage.CompletionTokens, incomingData.Usage.TotalTokens)
 				currentMessageContent = ""
 				break processLoop
 			}
