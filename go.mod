@@ -4,7 +4,7 @@ go 1.22.1
 
 require (
 	github.com/mattn/go-sqlite3 v1.14.22
-	github.com/rs/zerolog v1.32.0
+	github.com/rs/zerolog v1.33.0
 	github.com/sethvargo/go-retry v0.2.4
 	go.mau.fi/util v0.4.2
 	gopkg.in/yaml.v2 v2.4.0
