@@ -3,7 +3,7 @@ module bot
 go 1.22.1
 
 require (
-	github.com/mattn/go-sqlite3 v1.14.22
+	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/rs/zerolog v1.33.0
 	github.com/sethvargo/go-retry v0.2.4
 	go.mau.fi/util v0.5.0
